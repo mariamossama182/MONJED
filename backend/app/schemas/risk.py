@@ -4,23 +4,34 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-RiskLevel = Literal["low", "moderate", "high", "critical"]
-HazardType = Literal["flood", "earthquake"]
+RiskLevel = Literal[
+    "low",
+    "moderate",
+    "high",
+    "critical",
+]
+
+HazardType = Literal[
+    "flood",
+    "earthquake",
+]
 
 
 class FloodRiskInput(BaseModel):
-    zone_id: str = Field(min_length=1)
+    zone_id: str = Field(
+        min_length=1
+    )
 
-    rainfall_1h_mm: float = Field(ge=0)
-    rainfall_24h_mm: float = Field(ge=0)
-
-    previous_rainfall_24h_mm: float | None = Field(
-        default=None,
+    rainfall_1h_mm: float = Field(
         ge=0
     )
 
-    community_reports: int = Field(
-        default=0,
+    rainfall_24h_mm: float = Field(
+        ge=0
+    )
+
+    previous_rainfall_24h_mm: float | None = Field(
+        default=None,
         ge=0
     )
 
@@ -31,11 +42,21 @@ class FloodRiskInput(BaseModel):
 
 
 class EarthquakeRiskInput(BaseModel):
-    zone_id: str = Field(min_length=1)
+    zone_id: str = Field(
+        min_length=1
+    )
 
-    magnitude: float = Field(ge=0)
-    depth_km: float = Field(ge=0)
-    distance_km: float = Field(ge=0)
+    magnitude: float = Field(
+        ge=0
+    )
+
+    depth_km: float = Field(
+        ge=0
+    )
+
+    distance_km: float = Field(
+        ge=0
+    )
 
     data_age_minutes: int = Field(
         default=0,
@@ -47,16 +68,21 @@ class EarthquakeRiskInput(BaseModel):
 
 class RiskAssessment(BaseModel):
     hazard: HazardType
+
     zone_id: str
 
-    risk_score: int = Field(ge=0, le=100)
+    risk_score: int = Field(
+        ge=0,
+        le=100
+    )
+
     risk_level: RiskLevel
 
-    confidence: float = Field(ge=0, le=1)
+    confidence: float = Field(
+        ge=0,
+        le=1
+    )
 
     reasons: list[str]
-
-    current_action: str
-    backup_action: str
 
     evaluated_at: datetime

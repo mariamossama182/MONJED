@@ -1,6 +1,4 @@
-﻿from datetime import datetime, timezone
-
-from fastapi import APIRouter
+﻿from fastapi import APIRouter
 
 from app.schemas.decision import (
     DecisionInput,
@@ -10,8 +8,13 @@ from app.schemas.decision import (
 
 from app.engines.decision import evaluate_decision
 
-from app.services.community_report_store import get_recent_reports
-from app.services.community_evidence_mapper import reports_to_evidence
+from app.services.community_report_store import (
+    get_recent_reports,
+)
+
+from app.services.community_evidence_mapper import (
+    reports_to_evidence,
+)
 
 
 router = APIRouter(
@@ -20,6 +23,10 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# DIRECT DECISION EVALUATION
+# ============================================================
+
 @router.post(
     "/evaluate",
     response_model=FinalDecision,
@@ -27,23 +34,28 @@ router = APIRouter(
 def evaluate_final_decision(
     data: DecisionInput,
 ) -> FinalDecision:
+    """
+    Evaluate an operational decision using an existing
+    deterministic risk assessment and supplied community
+    evidence.
 
-    result = evaluate_decision(data)
+    Community evidence may adjust operational actions,
+    but it does not modify the scientific risk score
+    or risk level.
+    """
 
-    return FinalDecision(
-        hazard=data.hazard,
-        zone_id=data.zone_id,
-        risk_score=data.risk_score,
-        risk_level=data.risk_level,
-        confidence=result["confidence"],
-        evidence_used=result["evidence_used"],
-        decision_status=result["decision_status"],
-        current_action=result["current_action"],
-        backup_action=result["backup_action"],
-        reasons=result["reasons"],
-        evaluated_at=datetime.now(timezone.utc),
+    result = evaluate_decision(
+        data
     )
 
+    return FinalDecision(
+        **result
+    )
+
+
+# ============================================================
+# DECISION FROM RISK + STORED COMMUNITY EVIDENCE
+# ============================================================
 
 @router.post(
     "/from-risk",
@@ -52,13 +64,35 @@ def evaluate_final_decision(
 def evaluate_from_risk(
     data: DecisionFromRiskInput,
 ) -> FinalDecision:
+    """
+    Build the operational decision from a deterministic
+    risk assessment plus recent community evidence stored
+    for the same zone.
+
+    Only recent reports are converted into operational
+    evidence. They do not alter the original risk score.
+    """
+
+    # --------------------------------------------------------
+    # 1. Load recent community reports
+    # --------------------------------------------------------
 
     reports = get_recent_reports(
         zone_id=data.zone_id,
         max_age_minutes=180,
     )
 
-    evidence = reports_to_evidence(reports)
+    # --------------------------------------------------------
+    # 2. Convert reports into operational evidence
+    # --------------------------------------------------------
+
+    evidence = reports_to_evidence(
+        reports
+    )
+
+    # --------------------------------------------------------
+    # 3. Build deterministic Decision Engine input
+    # --------------------------------------------------------
 
     decision_input = DecisionInput(
         hazard=data.hazard,
@@ -69,18 +103,14 @@ def evaluate_from_risk(
         evidence=evidence,
     )
 
-    result = evaluate_decision(decision_input)
+    # --------------------------------------------------------
+    # 4. Evaluate operational decision
+    # --------------------------------------------------------
+
+    result = evaluate_decision(
+        decision_input
+    )
 
     return FinalDecision(
-        hazard=data.hazard,
-        zone_id=data.zone_id,
-        risk_score=data.risk_score,
-        risk_level=data.risk_level,
-        confidence=result["confidence"],
-        evidence_used=result["evidence_used"],
-        decision_status=result["decision_status"],
-        current_action=result["current_action"],
-        backup_action=result["backup_action"],
-        reasons=result["reasons"],
-        evaluated_at=datetime.now(timezone.utc),
+        **result
     )

@@ -1,74 +1,129 @@
 from app.schemas.risk import FloodRiskInput, RiskLevel
 
 
-def calculate_confidence(data: FloodRiskInput) -> float:
-    """
-    Prototype evidence-confidence heuristic.
+# ============================================================
+# FLOOD EVIDENCE CONFIDENCE
+# ============================================================
 
-    This is NOT the probability that a flood will happen.
-    It represents how complete/recent the evidence is.
+def calculate_confidence(
+    data: FloodRiskInput,
+) -> float:
+    """
+    Estimate confidence in the flood-risk assessment.
+
+    IMPORTANT:
+    - This is NOT the probability that a flood will happen.
+    - It represents the quality, freshness, and completeness
+      of the scientific evidence available to the Risk Engine.
+    - Community reports do NOT affect this value.
     """
 
     confidence = 0.65
 
-    # Recent data increases confidence
+    # --------------------------------------------------------
+    # 1. Data freshness
+    # --------------------------------------------------------
+
     if data.data_age_minutes <= 60:
         confidence += 0.15
+
     elif data.data_age_minutes <= 180:
         confidence += 0.05
+
     elif data.data_age_minutes > 360:
         confidence -= 0.15
 
-    # Previous data allows trend comparison
+    # --------------------------------------------------------
+    # 2. Trend evidence availability
+    # --------------------------------------------------------
+
     if data.previous_rainfall_24h_mm is not None:
         confidence += 0.10
 
-    # Community evidence
-    if data.community_reports >= 2:
-        confidence += 0.10
-    elif data.community_reports == 1:
-        confidence += 0.05
+    # --------------------------------------------------------
+    # Safe confidence bounds
+    # --------------------------------------------------------
 
-    # Keep it within a safe range
-    confidence = max(0.0, min(confidence, 0.95))
+    confidence = max(
+        0.0,
+        min(confidence, 0.95),
+    )
 
-    return round(confidence, 2)
+    return round(
+        confidence,
+        2,
+    )
 
+
+# ============================================================
+# FLOOD RISK ENGINE
+# ============================================================
 
 def calculate_flood_risk(
-    data: FloodRiskInput
+    data: FloodRiskInput,
 ) -> tuple[int, RiskLevel, list[str], float]:
+    """
+    Calculate deterministic flood risk from rainfall evidence.
+
+    The Risk Engine uses only scientific/environmental inputs.
+
+    Community reports are intentionally excluded from:
+    - risk_score
+    - risk_level
+    - confidence
+
+    Community evidence is handled later by the
+    Decision Engine as operational evidence.
+    """
 
     score = 0
     reasons: list[str] = []
 
-    # -------------------------
+    # ========================================================
     # 1. Short-term rainfall
-    # -------------------------
+    #
+    # Maximum contribution: 35 points
+    # ========================================================
 
     if data.rainfall_1h_mm >= 30:
-        score += 30
-        reasons.append("High short-term rainfall")
+        score += 35
+
+        reasons.append(
+            "High short-term rainfall"
+        )
 
     elif data.rainfall_1h_mm >= 15:
-        score += 18
-        reasons.append("Elevated short-term rainfall")
+        score += 20
 
-    # -------------------------
+        reasons.append(
+            "Elevated short-term rainfall"
+        )
+
+    # ========================================================
     # 2. Accumulated rainfall
-    # -------------------------
+    #
+    # Maximum contribution: 45 points
+    # ========================================================
 
     if data.rainfall_24h_mm >= 80:
-        score += 35
-        reasons.append("High accumulated rainfall")
+        score += 45
+
+        reasons.append(
+            "High accumulated rainfall"
+        )
 
     elif data.rainfall_24h_mm >= 40:
-        score += 20
-        reasons.append("Elevated accumulated rainfall")
+        score += 25
 
-    # -------------------------
+        reasons.append(
+            "Elevated accumulated rainfall"
+        )
+
+    # ========================================================
     # 3. Rainfall trend
-    # -------------------------
+    #
+    # Maximum contribution: 20 points
+    # ========================================================
 
     if data.previous_rainfall_24h_mm is not None:
 
@@ -78,45 +133,31 @@ def calculate_flood_risk(
         )
 
         if increase >= 20:
-            score += 10
+            score += 20
+
             reasons.append(
                 "Accumulated rainfall is increasing significantly"
             )
 
         elif increase >= 10:
-            score += 5
+            score += 10
+
             reasons.append(
                 "Accumulated rainfall is increasing"
             )
 
-    # -------------------------
-    # 4. Community evidence
-    # -------------------------
+    # ========================================================
+    # Score safety
+    # ========================================================
 
-    if data.community_reports >= 5:
-        score += 20
-        reasons.append(
-            "Multiple community reports indicate flooding"
-        )
+    score = max(
+        0,
+        min(score, 100),
+    )
 
-    elif data.community_reports >= 2:
-        score += 12
-        reasons.append(
-            "Community reports indicate possible flooding"
-        )
-
-    elif data.community_reports == 1:
-        score += 5
-        reasons.append(
-            "A recent community report indicates possible flooding"
-        )
-
-    # Never exceed 100
-    score = min(score, 100)
-
-    # -------------------------
+    # ========================================================
     # Risk classification
-    # -------------------------
+    # ========================================================
 
     if score >= 80:
         level: RiskLevel = "critical"
@@ -130,11 +171,26 @@ def calculate_flood_risk(
     else:
         level = "low"
 
-    confidence = calculate_confidence(data)
+    # ========================================================
+    # Confidence
+    # ========================================================
+
+    confidence = calculate_confidence(
+        data
+    )
+
+    # ========================================================
+    # Explanation fallback
+    # ========================================================
 
     if not reasons:
         reasons.append(
-            "No significant flood-risk indicators detected"
+            "No significant rainfall-based flood-risk indicators detected"
         )
 
-    return score, level, reasons, confidence
+    return (
+        score,
+        level,
+        reasons,
+        confidence,
+    )

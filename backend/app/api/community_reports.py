@@ -22,15 +22,38 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# ANALYZE REPORT
+# ============================================================
+
 @router.post(
     "/analyze",
     response_model=CommunityReportAnalysis,
 )
 def analyze_report(
     report: CommunityReportInput,
-):
-    return analyze_community_report(report)
+) -> CommunityReportAnalysis:
+    """
+    Analyze a community report without storing it.
 
+    The public response contains only the structured analysis.
+
+    analysis_source is intentionally not returned here because
+    this endpoint's response contract is CommunityReportAnalysis.
+    """
+
+    analysis, _analysis_source = (
+        analyze_community_report(
+            report
+        )
+    )
+
+    return analysis
+
+
+# ============================================================
+# SUBMIT AND STORE REPORT
+# ============================================================
 
 @router.post(
     "/submit",
@@ -38,14 +61,34 @@ def analyze_report(
 )
 def submit_report(
     report: CommunityReportInput,
-):
-    analysis = analyze_community_report(report)
+) -> CommunityReportRecord:
+    """
+    Analyze and store a community report.
+
+    The backend records both:
+    - the structured analysis
+    - the mechanism that produced that analysis
+
+    analysis_source does NOT indicate that the report
+    has been verified.
+    """
+
+    analysis, analysis_source = (
+        analyze_community_report(
+            report
+        )
+    )
 
     return save_report(
         report=report,
         analysis=analysis,
+        analysis_source=analysis_source,
     )
 
+
+# ============================================================
+# RECENT REPORTS
+# ============================================================
 
 @router.get(
     "/recent/{zone_id}",
@@ -53,7 +96,11 @@ def submit_report(
 )
 def recent_reports(
     zone_id: str,
-):
+) -> list[CommunityReportRecord]:
+    """
+    Return recently stored community reports for a zone.
+    """
+
     return get_recent_reports(
         zone_id=zone_id,
     )
