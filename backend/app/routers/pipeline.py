@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
 
@@ -28,11 +28,6 @@ from app.services.earthquake_risk import (
     calculate_earthquake_risk,
 )
 
-from app.services.action_engine import (
-    get_flood_actions,
-    get_earthquake_actions,
-)
-
 from app.services.community_report_store import (
     get_recent_reports,
 )
@@ -49,6 +44,14 @@ from app.engines.decision import (
     evaluate_decision,
 )
 
+from app.services.ai_adapter import (
+    build_ai_payload,
+)
+
+from app.services.gemini_alert import (
+    generate_alert,
+)
+
 
 router = APIRouter(
     prefix="/pipeline",
@@ -56,16 +59,29 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# DECISION BUILDER
+# ============================================================
+
 def build_final_decision(
     risk: RiskAssessment,
 ) -> FinalDecision:
+    """
+    Combine scientific risk assessment with recent
+    community evidence to produce the operational decision.
+
+    Community evidence may modify operational actions,
+    but it does NOT modify the scientific risk score.
+    """
 
     reports = get_recent_reports(
         zone_id=risk.zone_id,
         max_age_minutes=180,
     )
 
-    evidence = reports_to_evidence(reports)
+    evidence = reports_to_evidence(
+        reports
+    )
 
     decision_input = DecisionInput(
         hazard=risk.hazard,
@@ -76,15 +92,28 @@ def build_final_decision(
         evidence=evidence,
     )
 
-    return FinalDecision(
-    **evaluate_decision(decision_input)
-)
+    decision_result = evaluate_decision(
+        decision_input
+    )
 
+    return FinalDecision(
+        **decision_result
+    )
+
+
+# ============================================================
+# ACCESSIBILITY LAYER
+# ============================================================
 
 def build_accessible_action(
     decision: FinalDecision,
     accessibility_needs: list[AccessibilityNeed] | None,
 ):
+    """
+    Adapt backend-approved actions for accessibility needs.
+
+    Accessibility does NOT modify the risk score or level.
+    """
 
     if not accessibility_needs:
         return None
@@ -99,6 +128,43 @@ def build_accessible_action(
     )
 
 
+# ============================================================
+# AI COMMUNICATION LAYER
+# ============================================================
+
+def add_ai_alert(
+    assessment: MonjedAssessment,
+    accessibility_action=None,
+) -> MonjedAssessment:
+    """
+    Generate a human-readable alert from deterministic
+    MONJED backend results.
+
+    Gemini is used only for communication.
+    It cannot change risk or operational decisions.
+    """
+
+    ai_payload = build_ai_payload(
+        assessment=assessment,
+        accessibility=accessibility_action,
+    )
+
+    ai_alert = generate_alert(
+        ai_payload
+    )
+
+    return MonjedAssessment(
+        risk=assessment.risk,
+        decision=assessment.decision,
+        accessible_action=assessment.accessible_action,
+        ai_alert=ai_alert,
+    )
+
+
+# ============================================================
+# FLOOD PIPELINE
+# ============================================================
+
 @router.post(
     "/flood",
     response_model=MonjedAssessment,
@@ -110,13 +176,14 @@ def flood_pipeline(
     ),
 ):
 
-    # Risk Engine
-    risk_score, risk_level, reasons, confidence = (
-        calculate_flood_risk(data)
-    )
+    # --------------------------------------------------------
+    # 1. Scientific Risk Engine
+    # --------------------------------------------------------
 
-    current_action, backup_action = get_flood_actions(
-        risk_level
+    risk_score, risk_level, reasons, confidence = (
+        calculate_flood_risk(
+            data
+        )
     )
 
     risk_assessment = RiskAssessment(
@@ -126,31 +193,51 @@ def flood_pipeline(
         risk_level=risk_level,
         confidence=confidence,
         reasons=reasons,
-        current_action=current_action,
-        backup_action=backup_action,
-        evaluated_at=datetime.utcnow(),
+        evaluated_at=datetime.now(
+            timezone.utc
+        ),
     )
 
+    # --------------------------------------------------------
+    # 2. Operational Decision Engine
+    # --------------------------------------------------------
 
-    # Decision Engine
     decision = build_final_decision(
         risk_assessment
     )
 
+    # --------------------------------------------------------
+    # 3. Accessibility Layer
+    # --------------------------------------------------------
 
-    # Accessibility Layer
     accessible_action = build_accessible_action(
         decision,
         accessibility_needs,
     )
 
+    # --------------------------------------------------------
+    # 4. MONJED Assessment
+    # --------------------------------------------------------
 
-    return MonjedAssessment(
+    assessment = MonjedAssessment(
         risk=risk_assessment,
         decision=decision,
         accessible_action=accessible_action,
     )
 
+    # --------------------------------------------------------
+    # 5. AI Communication Layer
+    # --------------------------------------------------------
+
+    return add_ai_alert(
+        assessment,
+        accessible_action,
+    )
+
+
+# ============================================================
+# EARTHQUAKE PIPELINE
+# ============================================================
 
 @router.post(
     "/earthquake",
@@ -163,13 +250,14 @@ def earthquake_pipeline(
     ),
 ):
 
-    # Risk Engine
-    risk_score, risk_level, reasons, confidence = (
-        calculate_earthquake_risk(data)
-    )
+    # --------------------------------------------------------
+    # 1. Scientific Risk / Impact Engine
+    # --------------------------------------------------------
 
-    current_action, backup_action = get_earthquake_actions(
-        risk_level
+    risk_score, risk_level, reasons, confidence = (
+        calculate_earthquake_risk(
+            data
+        )
     )
 
     risk_assessment = RiskAssessment(
@@ -179,27 +267,43 @@ def earthquake_pipeline(
         risk_level=risk_level,
         confidence=confidence,
         reasons=reasons,
-        current_action=current_action,
-        backup_action=backup_action,
-        evaluated_at=datetime.utcnow(),
+        evaluated_at=datetime.now(
+            timezone.utc
+        ),
     )
 
+    # --------------------------------------------------------
+    # 2. Operational Decision Engine
+    # --------------------------------------------------------
 
-    # Decision Engine
     decision = build_final_decision(
         risk_assessment
     )
 
+    # --------------------------------------------------------
+    # 3. Accessibility Layer
+    # --------------------------------------------------------
 
-    # Accessibility Layer
     accessible_action = build_accessible_action(
         decision,
         accessibility_needs,
     )
 
+    # --------------------------------------------------------
+    # 4. MONJED Assessment
+    # --------------------------------------------------------
 
-    return MonjedAssessment(
+    assessment = MonjedAssessment(
         risk=risk_assessment,
         decision=decision,
         accessible_action=accessible_action,
+    )
+
+    # --------------------------------------------------------
+    # 5. AI Communication Layer
+    # --------------------------------------------------------
+
+    return add_ai_alert(
+        assessment,
+        accessible_action,
     )

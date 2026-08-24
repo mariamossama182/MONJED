@@ -6,6 +6,11 @@ from app.schemas.accessibility import AccessibleActionPlan
 
 
 class MonjedAssessment(BaseModel):
+
     risk: RiskAssessment
+
     decision: FinalDecision
+
     accessible_action: AccessibleActionPlan | None = None
+
+    ai_alert: dict | None = None
