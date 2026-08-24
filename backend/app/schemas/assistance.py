@@ -167,4 +167,6 @@ class AssistanceRequestRecord(BaseModel):
 
     assigned_at: datetime | None = None
 
+    started_at: datetime | None = None
+
     resolved_at: datetime | None = None
