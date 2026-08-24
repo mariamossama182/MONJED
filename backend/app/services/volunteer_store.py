@@ -49,6 +49,35 @@ def add_volunteer(
 
 
 # ============================================================
+# GET VOLUNTEER / RESPONDER
+# ============================================================
+
+def get_volunteer(
+    volunteer_id: str,
+) -> VolunteerRecord | None:
+    """
+    Return one volunteer or trained responder by ID.
+    """
+
+    normalized_volunteer_id = (
+        volunteer_id.strip()
+    )
+
+    if not normalized_volunteer_id:
+        return None
+
+    for volunteer in _volunteers:
+
+        if (
+            volunteer.volunteer_id
+            == normalized_volunteer_id
+        ):
+            return volunteer
+
+    return None
+
+
+# ============================================================
 # AVAILABLE VOLUNTEERS
 # ============================================================
 
@@ -76,6 +105,38 @@ def get_available_volunteers(
             == normalized_zone_id
         )
     ]
+
+
+# ============================================================
+# UPDATE VOLUNTEER AVAILABILITY
+# ============================================================
+
+def set_volunteer_availability(
+    volunteer_id: str,
+    available: bool,
+) -> VolunteerRecord | None:
+    """
+    Update availability for a volunteer or trained responder.
+
+    Typical lifecycle:
+
+        request assigned
+            -> available = False
+
+        request resolved
+            -> available = True
+    """
+
+    volunteer = get_volunteer(
+        volunteer_id
+    )
+
+    if volunteer is None:
+        return None
+
+    volunteer.available = available
+
+    return volunteer
 
 
 # ============================================================

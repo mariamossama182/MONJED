@@ -13,11 +13,17 @@ from app.schemas.decision import (
     FinalDecision,
 )
 
-from app.schemas.pipeline import MonjedAssessment
+from app.schemas.pipeline import (
+    MonjedAssessment,
+)
 
 from app.schemas.accessibility import (
     AccessibilityNeed,
     AccessibilityProfile,
+)
+
+from app.schemas.assistance import (
+    AssistanceRequestRecord,
 )
 
 from app.services.flood_risk import (
@@ -38,6 +44,10 @@ from app.services.community_evidence_mapper import (
 
 from app.services.accessibility_adapter import (
     adapt_decision_for_accessibility,
+)
+
+from app.services.assistance_store import (
+    create_decision_assistance_request,
 )
 
 from app.engines.decision import (
@@ -67,8 +77,8 @@ def build_final_decision(
     risk: RiskAssessment,
 ) -> FinalDecision:
     """
-    Combine scientific risk assessment with recent
-    community evidence to produce the operational decision.
+    Combine scientific risk assessment with recent community
+    evidence to produce the operational decision.
 
     Community evidence may modify operational actions,
     but it does NOT modify the scientific risk score.
@@ -112,7 +122,7 @@ def build_accessible_action(
     """
     Adapt backend-approved actions for accessibility needs.
 
-    Accessibility does NOT modify the risk score or level.
+    Accessibility does NOT modify scientific risk.
     """
 
     if not accessibility_needs:
@@ -125,6 +135,143 @@ def build_accessible_action(
     return adapt_decision_for_accessibility(
         decision=decision,
         profile=profile,
+    )
+
+
+# ============================================================
+# HUMAN ASSISTANCE ESCALATION
+# ============================================================
+
+def build_assistance_request(
+    decision: FinalDecision,
+    accessibility_needs: list[AccessibilityNeed] | None,
+) -> AssistanceRequestRecord | None:
+    """
+    Automatically create an assistance request when the
+    deterministic Decision Engine requires human review.
+
+    Current safety policy:
+
+    people_trapped
+        -> human_review_required
+        -> critical rescue_support request
+        -> trained responder required
+
+    IMPORTANT:
+    - This does NOT automatically assign a responder.
+    - Matching remains controlled by the safety-aware
+      volunteer matching layer.
+    - Community reports remain unverified unless separately
+      confirmed.
+    """
+
+    # --------------------------------------------------------
+    # 1. ESCALATE ONLY HUMAN-REVIEW DECISIONS
+    # --------------------------------------------------------
+
+    if (
+        decision.decision_status
+        != "human_review_required"
+    ):
+        return None
+
+    # --------------------------------------------------------
+    # 2. LOAD RECENT COMMUNITY REPORTS
+    # --------------------------------------------------------
+
+    reports = get_recent_reports(
+        zone_id=decision.zone_id,
+        max_age_minutes=180,
+    )
+
+    # --------------------------------------------------------
+    # 3. IDENTIFY REPORTS SUPPORTING THE ESCALATION
+    #
+    # Currently people_trapped is the safety-critical signal
+    # that triggers human_review_required.
+    # --------------------------------------------------------
+
+    escalation_reports = [
+        report
+        for report in reports
+        if report.analysis.people_trapped
+    ]
+
+    # Human review should currently have a corresponding
+    # trapped-person report.
+    #
+    # If none exists, fail safely instead of inventing
+    # location/report metadata.
+    if not escalation_reports:
+
+        print(
+            "MONJED assistance escalation warning: "
+            "human_review_required was produced, but no recent "
+            "people_trapped report was found."
+        )
+
+        return None
+
+    # --------------------------------------------------------
+    # 4. USE MOST RECENT RELEVANT LOCATION
+    # --------------------------------------------------------
+
+    latest_report = max(
+        escalation_reports,
+        key=lambda report: report.created_at,
+    )
+
+    location = latest_report.location
+
+    # --------------------------------------------------------
+    # 5. TRACE SOURCE REPORTS
+    # --------------------------------------------------------
+
+    source_report_ids = [
+        report.report_id
+        for report in escalation_reports
+    ]
+
+    # Remove duplicates while preserving order.
+    source_report_ids = list(
+        dict.fromkeys(
+            source_report_ids
+        )
+    )
+
+    # --------------------------------------------------------
+    # 6. ACCESSIBILITY METADATA
+    # --------------------------------------------------------
+
+    normalized_accessibility_needs = list(
+        dict.fromkeys(
+            accessibility_needs or []
+        )
+    )
+
+    # --------------------------------------------------------
+    # 7. CREATE SAFE SYSTEM-GENERATED REQUEST
+    # --------------------------------------------------------
+
+    return create_decision_assistance_request(
+        zone_id=decision.zone_id,
+        location=location,
+        hazard=decision.hazard,
+        request_type="rescue_support",
+        priority="critical",
+        description=(
+            "Human review is required because recent community "
+            "evidence indicates that people may be trapped. "
+            "Trained rescue assistance is required. "
+            "Community evidence remains unverified unless "
+            "separately confirmed."
+        ),
+        evidence_used=decision.evidence_used,
+        source_report_ids=source_report_ids,
+        accessibility_needs=(
+            normalized_accessibility_needs
+        ),
+        requires_trained_responder=True,
     )
 
 
@@ -156,7 +303,12 @@ def add_ai_alert(
     return MonjedAssessment(
         risk=assessment.risk,
         decision=assessment.decision,
-        accessible_action=assessment.accessible_action,
+        accessible_action=(
+            assessment.accessible_action
+        ),
+        assistance_request=(
+            assessment.assistance_request
+        ),
         ai_alert=ai_alert,
     )
 
@@ -177,7 +329,7 @@ def flood_pipeline(
 ):
 
     # --------------------------------------------------------
-    # 1. Scientific Risk Engine
+    # 1. SCIENTIFIC RISK ENGINE
     # --------------------------------------------------------
 
     risk_score, risk_level, reasons, confidence = (
@@ -199,7 +351,7 @@ def flood_pipeline(
     )
 
     # --------------------------------------------------------
-    # 2. Operational Decision Engine
+    # 2. OPERATIONAL DECISION ENGINE
     # --------------------------------------------------------
 
     decision = build_final_decision(
@@ -207,7 +359,7 @@ def flood_pipeline(
     )
 
     # --------------------------------------------------------
-    # 3. Accessibility Layer
+    # 3. ACCESSIBILITY LAYER
     # --------------------------------------------------------
 
     accessible_action = build_accessible_action(
@@ -216,17 +368,31 @@ def flood_pipeline(
     )
 
     # --------------------------------------------------------
-    # 4. MONJED Assessment
+    # 4. HUMAN ASSISTANCE ESCALATION
+    # --------------------------------------------------------
+
+    assistance_request = (
+        build_assistance_request(
+            decision=decision,
+            accessibility_needs=(
+                accessibility_needs
+            ),
+        )
+    )
+
+    # --------------------------------------------------------
+    # 5. MONJED ASSESSMENT
     # --------------------------------------------------------
 
     assessment = MonjedAssessment(
         risk=risk_assessment,
         decision=decision,
         accessible_action=accessible_action,
+        assistance_request=assistance_request,
     )
 
     # --------------------------------------------------------
-    # 5. AI Communication Layer
+    # 6. AI COMMUNICATION LAYER
     # --------------------------------------------------------
 
     return add_ai_alert(
@@ -251,7 +417,7 @@ def earthquake_pipeline(
 ):
 
     # --------------------------------------------------------
-    # 1. Scientific Risk / Impact Engine
+    # 1. SCIENTIFIC RISK / IMPACT ENGINE
     # --------------------------------------------------------
 
     risk_score, risk_level, reasons, confidence = (
@@ -273,7 +439,7 @@ def earthquake_pipeline(
     )
 
     # --------------------------------------------------------
-    # 2. Operational Decision Engine
+    # 2. OPERATIONAL DECISION ENGINE
     # --------------------------------------------------------
 
     decision = build_final_decision(
@@ -281,7 +447,7 @@ def earthquake_pipeline(
     )
 
     # --------------------------------------------------------
-    # 3. Accessibility Layer
+    # 3. ACCESSIBILITY LAYER
     # --------------------------------------------------------
 
     accessible_action = build_accessible_action(
@@ -290,17 +456,31 @@ def earthquake_pipeline(
     )
 
     # --------------------------------------------------------
-    # 4. MONJED Assessment
+    # 4. HUMAN ASSISTANCE ESCALATION
+    # --------------------------------------------------------
+
+    assistance_request = (
+        build_assistance_request(
+            decision=decision,
+            accessibility_needs=(
+                accessibility_needs
+            ),
+        )
+    )
+
+    # --------------------------------------------------------
+    # 5. MONJED ASSESSMENT
     # --------------------------------------------------------
 
     assessment = MonjedAssessment(
         risk=risk_assessment,
         decision=decision,
         accessible_action=accessible_action,
+        assistance_request=assistance_request,
     )
 
     # --------------------------------------------------------
-    # 5. AI Communication Layer
+    # 6. AI COMMUNICATION LAYER
     # --------------------------------------------------------
 
     return add_ai_alert(
