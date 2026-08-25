@@ -1,3 +1,11 @@
+from math import (
+    radians,
+    sin,
+    cos,
+    sqrt,
+    atan2,
+)
+
 from app.schemas.assistance import (
     AssistanceRequestRecord,
 )
@@ -7,11 +15,13 @@ from app.schemas.volunteer import (
 )
 
 
+
 # ============================================================
-# SKILL REQUIREMENTS
+# REQUIRED SKILLS
 # ============================================================
 
-SKILL_MAPPING: dict[str, tuple[str, ...]] = {
+SKILL_MAPPING = {
+
     "evacuation": (
         "evacuation",
         "transportation",
@@ -39,200 +49,266 @@ SKILL_MAPPING: dict[str, tuple[str, ...]] = {
 }
 
 
+
 # ============================================================
-# HELPERS
+# DISTANCE
 # ============================================================
 
-def _same_zone(
-    volunteer: VolunteerRecord,
-    request: AssistanceRequestRecord,
-) -> bool:
-    """
-    Compare MONJED zone identifiers safely.
-    """
+def calculate_distance_km(
+    lat1,
+    lon1,
+    lat2,
+    lon2,
+):
 
-    return (
-        volunteer.zone_id.strip()
-        == request.zone_id.strip()
+    if None in (
+        lat1,
+        lon1,
+        lat2,
+        lon2,
+    ):
+        return None
+
+
+    radius = 6371
+
+
+    lat1 = radians(lat1)
+    lon1 = radians(lon1)
+
+    lat2 = radians(lat2)
+    lon2 = radians(lon2)
+
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+
+    a = (
+        sin(dlat / 2)**2
+        +
+        cos(lat1)
+        *
+        cos(lat2)
+        *
+        sin(dlon / 2)**2
     )
 
 
-def _requires_trained_responder(
-    request: AssistanceRequestRecord,
-) -> bool:
-    """
-    Determine whether a request must only be handled by
-    a trained responder.
+    return radius * (
+        2 * atan2(
+            sqrt(a),
+            sqrt(1-a)
+        )
+    )
 
-    Defense in depth:
-    rescue_support is always treated as requiring trained
-    response even if request metadata was created incorrectly.
-    """
+
+
+# ============================================================
+# SAFETY
+# ============================================================
+
+def requires_trained_responder(
+    request,
+):
 
     return (
         request.requires_trained_responder
-        or request.request_type == "rescue_support"
+        or
+        request.request_type
+        ==
+        "rescue_support"
     )
 
 
-def _has_required_transport(
-    volunteer: VolunteerRecord,
-) -> bool:
-    """
-    Transportation support requires an actual declared vehicle.
-    """
 
-    if volunteer.vehicle_type is None:
-        return False
+def has_transport(
+    volunteer,
+):
 
     return bool(
-        volunteer.vehicle_type.strip()
+        volunteer.vehicle_type
     )
 
 
-def _can_use_skill(
-    volunteer: VolunteerRecord,
-    request: AssistanceRequestRecord,
-    skill: str,
-) -> bool:
-    """
-    Validate both the skill and any capability required
-    to use that skill safely.
-    """
+
+def can_use_skill(
+    volunteer,
+    request,
+    skill,
+):
+
 
     if skill not in volunteer.skills:
+
         return False
 
-    # Transportation requests require an actual vehicle.
+
+
     if (
-        request.request_type == "transportation"
-        and skill == "transportation"
+        request.request_type
+        ==
+        "transportation"
+        and
+        skill
+        ==
+        "transportation"
     ):
-        return _has_required_transport(
+
+        return has_transport(
             volunteer
         )
 
-    # For evacuation, a transportation-skilled responder
-    # can be used only if they actually have a vehicle.
-    #
-    # A person with the dedicated "evacuation" skill does
-    # not necessarily require a vehicle.
-    if (
-        request.request_type == "evacuation"
-        and skill == "transportation"
-    ):
-        return _has_required_transport(
-            volunteer
-        )
+
 
     return True
 
 
+
 # ============================================================
-# VOLUNTEER / RESPONDER MATCHING
+# QUALIFICATION
 # ============================================================
 
-def match_volunteer(
-    request: AssistanceRequestRecord,
-    volunteers: list[VolunteerRecord],
-) -> VolunteerRecord | None:
-    """
-    Find a safe eligible volunteer/responder.
+def is_qualified(
+    volunteer,
+    request,
+):
 
-    Matching requirements:
 
-    1. Volunteer must be available.
-    2. Volunteer must be in the same MONJED zone.
-    3. Safety-critical requests must use a trained responder.
-    4. Volunteer must have a relevant skill.
-    5. Transportation-based matches require a declared vehicle.
+    if not volunteer.available:
 
-    IMPORTANT:
-    There is intentionally NO unqualified fallback candidate.
+        return False
 
-    If no safe match exists, return None so the request remains
-    pending for escalation rather than assigning an unsuitable
-    volunteer.
-    """
+
+
+    if (
+        volunteer.zone_id.strip()
+        !=
+        request.zone_id.strip()
+    ):
+
+        return False
+
+
+
+    if requires_trained_responder(request):
+
+        if (
+            volunteer.responder_level
+            !=
+            "trained_responder"
+        ):
+
+            return False
+
+
 
     required_skills = SKILL_MAPPING.get(
         request.request_type,
         (),
     )
 
-    # --------------------------------------------------------
-    # BASE ELIGIBILITY
-    # --------------------------------------------------------
 
-    candidates = [
-        volunteer
-        for volunteer in volunteers
-        if (
-            volunteer.available
-            and _same_zone(
-                volunteer,
-                request,
-            )
+    return any(
+
+        can_use_skill(
+            volunteer,
+            request,
+            skill,
         )
-    ]
 
-    if not candidates:
-        return None
+        for skill in required_skills
 
-    # --------------------------------------------------------
-    # TRAINED RESPONDER SAFETY FILTER
-    # --------------------------------------------------------
-
-    trained_required = (
-        _requires_trained_responder(
-            request
-        )
     )
 
-    if trained_required:
 
-        candidates = [
-            volunteer
-            for volunteer in candidates
-            if (
-                volunteer.responder_level
-                == "trained_responder"
-            )
-        ]
 
-        if not candidates:
-            return None
+# ============================================================
+# MATCH ENGINE
+# ============================================================
 
-    else:
+def match_volunteer(
+    request: AssistanceRequestRecord,
+    volunteers: list[VolunteerRecord],
+):
 
-        # Preserve trained responders for emergencies when
-        # ordinary volunteers can safely handle the request.
-        candidates = sorted(
-            candidates,
-            key=lambda volunteer: (
-                volunteer.responder_level
-                == "trained_responder"
-            ),
+
+    qualified = [
+
+        volunteer
+
+        for volunteer in volunteers
+
+        if is_qualified(
+            volunteer,
+            request,
         )
 
-    # --------------------------------------------------------
-    # SKILL MATCHING
-    # --------------------------------------------------------
+    ]
 
-    for required_skill in required_skills:
 
-        for volunteer in candidates:
+    if not qualified:
 
-            if _can_use_skill(
-                volunteer,
-                request,
-                required_skill,
-            ):
+        return None
 
-                return volunteer
 
-    # --------------------------------------------------------
-    # NO SAFE MATCH
-    # --------------------------------------------------------
 
-    return None
+    def ranking(
+        volunteer
+    ):
+
+
+        distance = calculate_distance_km(
+
+            request.latitude,
+
+            request.longitude,
+
+            volunteer.latitude,
+
+            volunteer.longitude,
+
+        )
+
+
+        # Missing GPS goes last
+
+        if distance is None:
+
+            distance = 999999
+
+
+
+        # Trained responder priority
+
+        responder_priority = (
+
+            0
+
+            if volunteer.responder_level
+            ==
+            "trained_responder"
+
+            else
+
+            1
+
+        )
+
+
+        return (
+
+            responder_priority,
+
+            distance,
+
+        )
+
+
+
+    qualified.sort(
+        key=ranking
+    )
+
+
+    return qualified[0]

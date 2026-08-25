@@ -1,50 +1,75 @@
-from bson import ObjectId
-from connection import get_database
+from database.connection import get_database
+
 
 
 def get_volunteer_collection():
+
     db = get_database()
+
     return db["volunteers"]
 
 
-def create_volunteers(data):
+
+def create_volunteer(data):
+
     collection = get_volunteer_collection()
 
-    result = collection.insert_one(data)
+    collection.insert_one(data)
 
-    return str(result.inserted_id)
-
-
-def get_volunteers(volunteer_id):
-    collection = get_volunteers_collection()
-
-    return collection.find_one({
-        "_id": ObjectId(volunteer_id)
-    })
+    return data["volunteer_id"]
 
 
-def get_all_volunteer():
-    collection = get_volunteers_collection()
 
-    return list(collection.find())
+def get_volunteer(volunteer_id):
+
+    collection = get_volunteer_collection()
+
+    return collection.find_one(
+        {
+            "volunteer_id": volunteer_id
+        }
+    )
 
 
-def update_volunteer(volunteer_id, data):
-    collection = get_volunteers_collection()
+
+def get_all_volunteers():
+
+    collection = get_volunteer_collection()
+
+    return list(
+        collection.find()
+    )
+
+
+
+def update_volunteer(
+    volunteer_id,
+    data
+):
+
+    collection = get_volunteer_collection()
 
     result = collection.update_one(
-        {"_id": ObjectId(volunteer_id)},
-        {"$set": data}
+        {
+            "volunteer_id": volunteer_id
+        },
+        {
+            "$set": data
+        }
     )
 
     return result.modified_count
 
 
+
 def delete_volunteer(volunteer_id):
+
     collection = get_volunteer_collection()
 
-    result = collection.delete_one({
-        "_id": ObjectId(volunteer_id)
-    })
+    result = collection.delete_one(
+        {
+            "volunteer_id": volunteer_id
+        }
+    )
 
     return result.deleted_count

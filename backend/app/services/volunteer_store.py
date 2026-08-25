@@ -6,11 +6,31 @@ from app.schemas.volunteer import (
 )
 
 
+
 # ============================================================
 # TEMPORARY IN-MEMORY STORE
 # ============================================================
 
 _volunteers: list[VolunteerRecord] = []
+
+
+
+# ============================================================
+# NORMALIZATION HELPERS
+# ============================================================
+
+def _normalize_skills(
+    skills: list[str],
+) -> list[str]:
+
+    return list(
+        dict.fromkeys(
+            skill.strip()
+            for skill in skills
+            if skill.strip()
+        )
+    )
+
 
 
 # ============================================================
@@ -21,60 +41,102 @@ def add_volunteer(
     data: VolunteerInput,
 ) -> VolunteerRecord:
     """
-    Register a volunteer or trained responder.
+    Register volunteer or trained responder.
 
-    responder_level and skills are validated by the
-    VolunteerInput schema before reaching this function.
+    GPS coordinates are stored for responder matching.
     """
+
 
     volunteer_data = data.model_dump()
 
-    # Keep zone identifiers consistent for matching.
+
+
+    # Normalize zone
+
     volunteer_data["zone_id"] = (
         data.zone_id.strip()
     )
 
+
+
+    # Normalize name
+
+    volunteer_data["name"] = (
+        data.name.strip()
+    )
+
+
+
+    # Normalize vehicle
+
+    if data.vehicle_type:
+
+        volunteer_data["vehicle_type"] = (
+            data.vehicle_type.strip()
+        )
+
+
+
+    # Normalize skills
+
+    volunteer_data["skills"] = (
+        _normalize_skills(
+            data.skills
+        )
+    )
+
+
+
     volunteer = VolunteerRecord(
+
         volunteer_id=str(
             uuid4()
         ),
+
         **volunteer_data,
     )
+
+
 
     _volunteers.append(
         volunteer
     )
 
+
     return volunteer
 
 
+
 # ============================================================
-# GET VOLUNTEER / RESPONDER
+# GET VOLUNTEER
 # ============================================================
 
 def get_volunteer(
     volunteer_id: str,
 ) -> VolunteerRecord | None:
-    """
-    Return one volunteer or trained responder by ID.
-    """
 
-    normalized_volunteer_id = (
+
+    volunteer_id = (
         volunteer_id.strip()
     )
 
-    if not normalized_volunteer_id:
+
+    if not volunteer_id:
+
         return None
+
+
 
     for volunteer in _volunteers:
 
-        if (
-            volunteer.volunteer_id
-            == normalized_volunteer_id
-        ):
+        if volunteer.volunteer_id == volunteer_id:
+
             return volunteer
 
+
+
     return None
+
 
 
 # ============================================================
@@ -85,84 +147,83 @@ def get_available_volunteers(
     zone_id: str,
 ) -> list[VolunteerRecord]:
     """
-    Return available volunteers/responders in the same
-    MONJED operational zone.
+    Returns available volunteers in same zone.
 
-    Qualification and safety filtering are intentionally
-    handled by volunteer_matching.py.
+    Qualification and distance ranking are handled
+    by volunteer_matching engine.
     """
 
-    normalized_zone_id = (
-        zone_id.strip()
-    )
+
+    zone_id = zone_id.strip()
+
+
 
     return [
+
         volunteer
+
         for volunteer in _volunteers
+
         if (
+
             volunteer.available
-            and volunteer.zone_id.strip()
-            == normalized_zone_id
+
+            and
+
+            volunteer.zone_id.strip()
+            ==
+            zone_id
+
         )
+
     ]
 
 
+
 # ============================================================
-# UPDATE VOLUNTEER AVAILABILITY
+# UPDATE AVAILABILITY
 # ============================================================
 
 def set_volunteer_availability(
     volunteer_id: str,
     available: bool,
 ) -> VolunteerRecord | None:
-    """
-    Update availability for a volunteer or trained responder.
 
-    Typical lifecycle:
-
-        request assigned
-            -> available = False
-
-        request resolved
-            -> available = True
-    """
 
     volunteer = get_volunteer(
         volunteer_id
     )
 
+
     if volunteer is None:
+
         return None
+
+
 
     volunteer.available = available
 
+
     return volunteer
+
 
 
 # ============================================================
 # ALL VOLUNTEERS
 # ============================================================
 
-def get_all_volunteers() -> list[VolunteerRecord]:
-    """
-    Return a snapshot of all registered volunteers/responders.
-    """
+def get_all_volunteers():
 
     return list(
         _volunteers
     )
 
 
+
 # ============================================================
 # CLEAR STORE
 # ============================================================
 
-def clear_volunteers() -> None:
-    """
-    Clear the temporary in-memory volunteer store.
-
-    Intended for development/testing only.
-    MongoDB persistence will replace this later.
-    """
+def clear_volunteers():
 
     _volunteers.clear()

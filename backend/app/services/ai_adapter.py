@@ -28,6 +28,7 @@ IMPORTANT:
 from copy import deepcopy
 
 
+
 SUPPORTED_LANGUAGES = {
     "en",
     "ar",
@@ -52,98 +53,86 @@ VALID_ACCESSIBILITY_NEEDS = {
 }
 
 
+DEFAULT_COUNTRY = "Egypt"
+
+
 # ============================================================
-# VALIDATION
+# VALIDATION HELPERS
 # ============================================================
 
+
+def _validate_language(
+    language: str,
+) -> str:
+
+    normalized = (
+        str(language)
+        .lower()
+        .strip()
+    )
+
+    return (
+        normalized
+        if normalized in SUPPORTED_LANGUAGES
+        else "en"
+    )
+
+
+
 def _validate_accessibility_needs(
-    accessibility_needs
+    accessibility_needs,
 ):
 
     if not accessibility_needs:
         return []
 
+
     if not isinstance(
         accessibility_needs,
-        list
+        list,
     ):
         raise TypeError(
             "accessibility_needs must be a list."
         )
 
+
     normalized = []
+
 
     for need in accessibility_needs:
 
-        value = str(
-            need
-        ).lower().strip()
+        value = (
+            str(need)
+            .lower()
+            .strip()
+        )
 
 
         if value not in VALID_ACCESSIBILITY_NEEDS:
+
             raise ValueError(
                 f"Unsupported accessibility need: {need}"
             )
 
 
         if value not in normalized:
-            normalized.append(
-                value
-            )
+
+            normalized.append(value)
 
 
     return normalized
 
 
 
-# ============================================================
-# BUILD AI PAYLOAD
-# ============================================================
-
-def build_ai_payload(
-    assessment,
-    accessibility=None,
-    language="en",
+def _validate_risk(
+    risk,
 ):
-    """
-    Convert MONJED assessment into AI payload.
 
-    AI receives only approved backend outputs.
-    """
-
-
-    risk = assessment.risk
-    decision = assessment.decision
-
-    effective_current_action = (
-    decision.current_action
+    risk_level = (
+        str(risk.risk_level)
+        .lower()
+        .strip()
     )
-
-    effective_backup_action = (
-        decision.backup_action
-    )
-
-    # -------------------------
-    # Language
-    # -------------------------
-
-    language = str(
-        language
-    ).lower().strip()
-
-
-    if language not in SUPPORTED_LANGUAGES:
-        language = "en"
-
-
-
-    # -------------------------
-    # Risk validation
-    # -------------------------
-
-    risk_level = str(
-        risk.risk_level
-    ).lower().strip()
 
 
     if risk_level not in VALID_RISK_LEVELS:
@@ -155,7 +144,7 @@ def build_ai_payload(
 
     if not isinstance(
         risk.risk_score,
-        (int, float)
+        (int, float),
     ):
 
         raise TypeError(
@@ -163,28 +152,113 @@ def build_ai_payload(
         )
 
 
+    if not 0 <= risk.risk_score <= 100:
 
-        # -------------------------
-    # Accessibility
-    # -------------------------
+        raise ValueError(
+            "risk_score must be between 0 and 100."
+        )
+
+
+    return risk_level
+
+
+
+def _safe_text(
+    value,
+    default,
+):
+
+    if value is None:
+        return default
+
+    return value
+
+
+
+# ============================================================
+# BUILD AI PAYLOAD
+# ============================================================
+
+
+def build_ai_payload(
+    assessment,
+    accessibility=None,
+    language="en",
+):
+
+    """
+    Convert MONJED backend assessment
+    into a controlled AI communication payload.
+
+    Gemini receives ONLY approved backend outputs.
+    """
+
+
+    if not hasattr(
+        assessment,
+        "risk",
+    ):
+
+        raise TypeError(
+            "Invalid MONJED assessment object."
+        )
+
+
+    if not hasattr(
+        assessment,
+        "decision",
+    ):
+
+        raise TypeError(
+            "Invalid MONJED decision object."
+        )
+
+
+
+    risk = assessment.risk
+
+    decision = assessment.decision
+
+
+
+    risk_level = _validate_risk(
+        risk
+    )
+
+
+    language = _validate_language(
+        language
+    )
+
+
+
+    current_action = _safe_text(
+        decision.current_action,
+        "Follow official safety guidance.",
+    )
+
+
+    backup_action = _safe_text(
+        decision.backup_action,
+        "Follow local authority instructions.",
+    )
+
+
+    decision_status = _safe_text(
+        decision.decision_status,
+        "no_adjustment",
+    )
+
+
 
     accessibility_needs = []
 
     accessibility_instructions = []
 
-    # Default effective actions are the original
-    # deterministic Decision Engine actions.
-    effective_current_action = (
-        decision.current_action
-    )
 
-    effective_backup_action = (
-        decision.backup_action
-    )
 
-    # If accessibility adaptation exists,
-    # use the backend-approved adapted actions.
     if accessibility:
+
 
         accessibility_needs = (
             _validate_accessibility_needs(
@@ -192,78 +266,148 @@ def build_ai_payload(
             )
         )
 
+
         accessibility_instructions = deepcopy(
             accessibility.communication_requirements
         )
 
-        effective_current_action = (
-            accessibility.adapted_current_action
+
+        current_action = _safe_text(
+            accessibility.adapted_current_action,
+            current_action,
         )
 
-        effective_backup_action = (
-            accessibility.adapted_backup_action
+
+        backup_action = _safe_text(
+            accessibility.adapted_backup_action,
+            backup_action,
         )
 
 
-    # -------------------------
-    # Community Evidence
-    # -------------------------
 
-    community_evidence = {
-        "matching_reports":
-            decision.evidence_used,
-    }
+    country = getattr(
+        assessment,
+        "country",
+        None,
+    )
 
 
-    # -------------------------
-    # Final AI Payload
-    # -------------------------
+    if country is None:
+
+        country = getattr(
+            risk,
+            "country",
+            DEFAULT_COUNTRY,
+        )
+
+
 
     return {
+
+
+        # AI safety metadata
+        "source":
+            "MONJED_BACKEND",
+
+
+        "ai_role":
+            "communication_only",
+
+
+        "generated_by":
+            "MONJED_DECISION_ENGINE",
+
+
+
         "zone_id":
             risk.zone_id,
 
+
         "country":
-            "Egypt",
+            country,
+
 
         "language":
             language,
 
+
+
         "hazards": [
+
             {
+
                 "hazard":
                     risk.hazard,
+
 
                 "risk_score":
                     risk.risk_score,
 
+
                 "risk_level":
                     risk_level,
+
 
                 "reasons":
                     deepcopy(
                         risk.reasons
                     ),
+
             }
+
         ],
 
+
+
         "community_evidence":
-            community_evidence,
 
-        "decision": {
-            "decision_status":
-                decision.decision_status,
+            {
 
-            "current_action":
-                effective_current_action,
+                "matching_reports":
+                    max(
+                        0,
+                        decision.evidence_used,
+                    )
 
-            "backup_action":
-                effective_backup_action,
+            },
 
-            "accessibility_instructions":
-                accessibility_instructions,
-        },
+
+
+        "decision":
+
+            {
+
+                "decision_status":
+                    decision_status,
+
+
+                "current_action":
+                    current_action,
+
+
+                "backup_action":
+                    backup_action,
+
+
+                "accessibility_instructions":
+                    accessibility_instructions,
+
+            },
+
+
 
         "accessibility_needs":
             accessibility_needs,
+
+
+
+        "confidence":
+
+            {
+
+                "source":
+                    "backend",
+
+            },
+
     }

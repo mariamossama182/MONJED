@@ -12,144 +12,164 @@ from app.schemas.community_report import (
 _reports: list[CommunityReportRecord] = []
 
 
+
+# ============================================================
+# SAVE REPORT
+# ============================================================
+
 def save_report(
     report: CommunityReportInput,
     analysis: CommunityReportAnalysis,
     analysis_source: AnalysisSource,
 ) -> CommunityReportRecord:
-    """
-    Store a community report together with its structured
-    analysis and the backend-controlled analysis source.
 
-    IMPORTANT:
-    - analysis_source describes how the report was analyzed.
-    - It does NOT mean the report was verified.
-    - verified remains False unless a trusted verification
-      process explicitly changes it later.
-    """
 
     now = datetime.now(
         timezone.utc
     )
 
-    # --------------------------------------------------------
-    # Prevent accidental duplicate submissions
-    # --------------------------------------------------------
 
     duplicate_window = (
-        now
-        - timedelta(
-            minutes=5
-        )
+        now - timedelta(minutes=5)
     )
 
-    normalized_zone_id = (
-        report.zone_id
-        .strip()
-    )
 
-    normalized_location = (
-        report.location
-        .strip()
-        .lower()
-    )
+    zone_id = report.zone_id.strip()
 
-    normalized_report_text = (
-        report.report_text
-        .strip()
-        .lower()
-    )
+    location = report.location.strip().lower()
+
+    text = report.report_text.strip().lower()
+
+
 
     for existing in _reports:
 
-        same_report = (
+
+        if (
+
             existing.zone_id.strip()
-            == normalized_zone_id
+            == zone_id
 
-            and existing.location.strip().lower()
-            == normalized_location
+            and
 
-            and existing.report_text.strip().lower()
-            == normalized_report_text
+            existing.location.strip().lower()
+            == location
 
-            and existing.created_at
+            and
+
+            existing.report_text.strip().lower()
+            == text
+
+            and
+
+            existing.latitude
+            == report.latitude
+
+            and
+
+            existing.longitude
+            == report.longitude
+
+            and
+
+            existing.created_at
             >= duplicate_window
-        )
 
-        if same_report:
+        ):
+
             return existing
 
-    # --------------------------------------------------------
-    # Create stored report
-    # --------------------------------------------------------
+
 
     record = CommunityReportRecord(
+
         report_id=str(
             uuid4()
         ),
 
-        zone_id=report.zone_id,
 
-        location=report.location,
+        zone_id=zone_id,
 
-        report_text=report.report_text,
+
+        location=report.location.strip(),
+
+
+        latitude=report.latitude,
+
+
+        longitude=report.longitude,
+
+
+        report_text=report.report_text.strip(),
+
 
         analysis=analysis,
 
+
         analysis_source=analysis_source,
+
 
         verified=False,
 
+
         created_at=now,
     )
+
 
     _reports.append(
         record
     )
 
+
     return record
 
+
+
+# ============================================================
+# RECENT REPORTS
+# ============================================================
 
 def get_recent_reports(
     zone_id: str,
     max_age_minutes: int = 180,
-) -> list[CommunityReportRecord]:
-    """
-    Return reports from the requested zone that are still
-    inside the operational evidence window.
-    """
+):
+
 
     cutoff = (
-        datetime.now(
-            timezone.utc
-        )
-        - timedelta(
-            minutes=max_age_minutes
-        )
+        datetime.now(timezone.utc)
+        -
+        timedelta(minutes=max_age_minutes)
     )
 
-    normalized_zone_id = (
-        zone_id.strip()
-    )
+
+    zone_id = zone_id.strip()
+
 
     return [
+
         report
+
         for report in _reports
+
         if (
+
             report.zone_id.strip()
-            == normalized_zone_id
-            and report.created_at
-            >= cutoff
+            == zone_id
+
+            and
+
+            report.created_at >= cutoff
+
         )
+
     ]
 
 
-def clear_reports() -> None:
-    """
-    Clear the temporary in-memory report store.
 
-    This exists for development/testing only.
-    MongoDB persistence will replace this store later.
-    """
+# ============================================================
+# CLEAR
+# ============================================================
+
+def clear_reports():
 
     _reports.clear()
