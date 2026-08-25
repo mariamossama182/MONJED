@@ -4,35 +4,43 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+
 # ============================================================
 # ENUMS
 # ============================================================
 
 class ReportSeverity(str, Enum):
+
     low = "low"
     moderate = "moderate"
     high = "high"
     critical = "critical"
 
 
+
 class HazardType(str, Enum):
+
     flood = "flood"
     earthquake = "earthquake"
     unknown = "unknown"
 
 
+
 class AnalysisSource(str, Enum):
+
     """
-    Identifies which backend analysis path produced
-    the structured community-report analysis.
+    Backend mechanism used to analyze the report.
 
     IMPORTANT:
-    This indicates the analysis mechanism only.
-    It does NOT indicate that the report was verified.
+    This does NOT verify that the reported event is true.
     """
 
     GEMINI = "GEMINI"
-    DETERMINISTIC_FALLBACK = "DETERMINISTIC_FALLBACK"
+
+    DETERMINISTIC_FALLBACK = (
+        "DETERMINISTIC_FALLBACK"
+    )
+
 
 
 # ============================================================
@@ -40,36 +48,81 @@ class AnalysisSource(str, Enum):
 # ============================================================
 
 class CommunityReportInput(BaseModel):
+
     """
     Raw community report submitted to MONJED.
 
-    The report is analyzed before being converted into
-    operational evidence for the Decision Engine.
+    The report is analyzed before becoming
+    operational evidence.
     """
+
 
     report_text: str = Field(
         ...,
         min_length=3,
         max_length=1000,
         description=(
-            "Free-text community report describing "
-            "the local situation"
+            "Free text description of the reported situation"
         ),
     )
+
+
 
     zone_id: str = Field(
         ...,
         min_length=1,
-        description="MONJED zone identifier",
+        description=(
+            "MONJED operational zone identifier"
+        ),
     )
+
+
 
     location: str = Field(
         ...,
         min_length=2,
         description=(
-            "Location where the situation was reported"
+            "Human-readable report location"
         ),
     )
+
+
+
+    # --------------------------------------------------------
+    # GPS
+    # --------------------------------------------------------
+
+    latitude: float | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+        description=(
+            "GPS latitude of reported location"
+        ),
+    )
+
+
+
+    longitude: float | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+        description=(
+            "GPS longitude of reported location"
+        ),
+    )
+
+
+
+    # Optional future user/community identifier
+    reporter_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Optional community user identifier"
+        ),
+    )
+
 
 
 # ============================================================
@@ -77,41 +130,48 @@ class CommunityReportInput(BaseModel):
 # ============================================================
 
 class CommunityReportAnalysis(BaseModel):
+
     """
-    Structured interpretation of a community report.
+    Structured evidence extracted from a report.
 
     IMPORTANT:
-    - These fields represent information extracted from
-      the submitted report.
-    - They do NOT automatically mean the information
-      has been independently verified.
-    - analysis_confidence describes confidence in the
-      extraction/interpretation, not confidence that
-      the reported event is objectively true.
+
+    - Represents extracted information only.
+    - Does NOT mean the report is verified.
+    - analysis_confidence measures extraction confidence,
+      not event truth.
     """
+
+
 
     hazard_type: HazardType
 
     severity: ReportSeverity
 
+
+
     # --------------------------------------------------------
-    # Flood / route evidence
+    # Flood Evidence
     # --------------------------------------------------------
 
     rising_water: bool = False
 
     blocked_road: bool = False
 
+
+
     # --------------------------------------------------------
-    # Earthquake / structural evidence
+    # Earthquake Evidence
     # --------------------------------------------------------
 
     building_damage: bool = False
 
     infrastructure_damage: bool = False
 
+
+
     # --------------------------------------------------------
-    # Human safety / assistance evidence
+    # Human Assistance Evidence
     # --------------------------------------------------------
 
     people_trapped: bool = False
@@ -122,8 +182,10 @@ class CommunityReportAnalysis(BaseModel):
 
     mobility_assistance_needed: bool = False
 
+
+
     # --------------------------------------------------------
-    # Analysis metadata
+    # AI Analysis Metadata
     # --------------------------------------------------------
 
     analysis_confidence: float = Field(
@@ -131,15 +193,26 @@ class CommunityReportAnalysis(BaseModel):
         ge=0,
         le=1,
         description=(
-            "Confidence in understanding and extracting "
-            "information from the report; this is not "
-            "verification of the report's truth."
+            "Confidence in extracting information "
+            "from the submitted report."
         ),
     )
+
+
 
     extracted_evidence: list[str] = Field(
         default_factory=list
     )
+
+
+
+    analysis_version: str = Field(
+        default="1.0",
+        description=(
+            "Version of the analysis pipeline used."
+        ),
+    )
+
 
 
 # ============================================================
@@ -147,36 +220,101 @@ class CommunityReportAnalysis(BaseModel):
 # ============================================================
 
 class CommunityReportRecord(BaseModel):
-    """
-    Community report stored by MONJED.
 
-    IMPORTANT:
-    - analysis_source identifies how the structured
-      analysis was produced.
-    - analysis_source does NOT indicate verification.
-    - verified=False means the report has not been
-      independently confirmed by an authorized or
-      trusted source.
+    """
+    Persistent community report record.
+
+    Used for:
+    - MongoDB storage
+    - evidence traceability
+    - AI audit history
     """
 
-    report_id: str
 
-    zone_id: str
+
+    report_id: str = Field(
+        ...,
+        min_length=1,
+    )
+
+
+
+    zone_id: str = Field(
+        ...,
+        min_length=1,
+    )
+
+
 
     location: str
 
+
+
+    # --------------------------------------------------------
+    # GPS
+    # --------------------------------------------------------
+
+    latitude: float | None = Field(
+        default=None,
+        ge=-90,
+        le=90,
+    )
+
+
+
+    longitude: float | None = Field(
+        default=None,
+        ge=-180,
+        le=180,
+    )
+
+
+
+    # --------------------------------------------------------
+    # Original Report
+    # --------------------------------------------------------
+
     report_text: str
 
+
+
+    reporter_id: str | None = None
+
+
+
+    # --------------------------------------------------------
+    # AI Analysis
+    # --------------------------------------------------------
+
     analysis: CommunityReportAnalysis
+
+
 
     analysis_source: AnalysisSource = Field(
         ...,
         description=(
-            "Backend mechanism that produced the structured "
-            "analysis. This does not verify the report."
+            "Mechanism that produced the analysis. "
+            "Does not verify the report."
         ),
     )
 
-    verified: bool = False
+
+
+    # --------------------------------------------------------
+    # Verification
+    # --------------------------------------------------------
+
+    verified: bool = Field(
+        default=False,
+        description=(
+            "Whether the report was independently verified."
+        ),
+    )
+
+
+
+    # --------------------------------------------------------
+    # Timestamp
+    # --------------------------------------------------------
 
     created_at: datetime

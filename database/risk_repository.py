@@ -1,4 +1,4 @@
-from connection import get_database
+from database.connection import get_database
 
 
 def get_risk_collection():
@@ -6,33 +6,47 @@ def get_risk_collection():
     return db["risk_snapshots"]
 
 
+
 def create_risk_snapshot(data):
+
     collection = get_risk_collection()
 
-    result = collection.insert_one(data)
+    collection.insert_one(data)
 
-    return result.inserted_id
+    return data["risk_id"]
 
 
-def get_risk_snapshot(snapshot_id):
+
+def get_risk_snapshot(risk_id):
+
     collection = get_risk_collection()
 
-    return collection.find_one({
-        "_id": snapshot_id
-    })
+    return collection.find_one(
+        {
+            "risk_id": risk_id
+        }
+    )
+
 
 
 def get_all_risk_snapshots():
+
     collection = get_risk_collection()
 
-    return list(collection.find())
+    return list(
+        collection.find()
+    )
 
 
-def delete_risk_snapshot(snapshot_id):
+
+def delete_risk_snapshot(risk_id):
+
     collection = get_risk_collection()
 
-    result = collection.delete_one({
-        "_id": snapshot_id
-    })
+    result = collection.delete_one(
+        {
+            "risk_id": risk_id
+        }
+    )
 
     return result.deleted_count
