@@ -1,50 +1,96 @@
+"""
+MONJED MongoDB Connection
+
+Central MongoDB connection manager.
+"""
+
+import os
+
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
-MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME = "monjed"
+
+load_dotenv()
+
+
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    "mongodb://localhost:27017/",
+)
+
+DB_NAME = os.getenv(
+    "MONGO_DB_NAME",
+    "monjed",
+)
+
 
 client = None
 db = None
 
 
 def connect_to_mongodb():
+    """
+    Connect to MongoDB and return MONJED database.
+    """
+
     global client, db
 
-    try:
-        client = MongoClient(MONGO_URI)
+    if db is not None:
+        return db
 
-        # اختبار الاتصال
+    try:
+
+        client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+        )
+
+        # Confirm that MongoDB is reachable.
         client.admin.command("ping")
 
         db = client[DB_NAME]
 
-        print("MongoDB connected successfully!")
+        print(
+            f"MongoDB connected successfully: {DB_NAME}"
+        )
 
         return db
 
-    except PyMongoError as e:
-        print("MongoDB connection failed!")
-        print(e)
+    except PyMongoError as exc:
 
         client = None
         db = None
 
-        return None
+        raise RuntimeError(
+            f"MongoDB connection failed: {exc}"
+        ) from exc
 
 
 def get_database():
+    """
+    Return active database connection.
+
+    Connect automatically when necessary.
+    """
+
     global db
 
     if db is None:
-        connect_to_mongodb()
+        return connect_to_mongodb()
 
     return db
 
 
 def close_connection():
-    global client
+    """
+    Close MongoDB connection safely.
+    """
 
-    if client:
+    global client, db
+
+    if client is not None:
         client.close()
-        print("MongoDB connection closed.")
+
+    client = None
+    db = None

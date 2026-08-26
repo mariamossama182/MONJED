@@ -116,7 +116,6 @@ def evaluate_decision(
     Gemini is not involved in this decision.
     """
 
-    confidence = data.confidence
 
     reasons: list[str] = []
 
@@ -148,17 +147,6 @@ def evaluate_decision(
             continue
 
         evidence_used += 1
-
-        # ----------------------------------------------------
-        # Verified evidence can slightly improve confidence
-        # in the operational decision.
-        #
-        # This does NOT mean the report changes scientific
-        # hazard probability.
-        # ----------------------------------------------------
-
-        if report.verified:
-            confidence += 0.02
 
         # ----------------------------------------------------
         # Blocked / flooded road
@@ -226,17 +214,6 @@ def evaluate_decision(
             if reason not in reasons:
                 reasons.append(reason)
 
-    # ========================================================
-    # 2. Confidence Safety Bounds
-    # ========================================================
-
-    confidence = max(
-        0.0,
-        min(
-            round(confidence, 2),
-            0.95,
-        ),
-    )
 
     # ========================================================
     # 3. Baseline Operational Action
@@ -258,6 +235,16 @@ def evaluate_decision(
 
     # No community evidence has changed the baseline action yet.
     decision_status = "no_adjustment"
+
+    # High / critical scientific risk independently requires
+    # an active notification even when no community reports exist.
+    if data.risk_level in {"high", "critical"}:
+        decision_status = "action_adjusted"
+
+        reasons.append(
+            f"Scientific risk level is {data.risk_level}; "
+            "active notification is required."
+        )
 
     # ========================================================
     # 4. Human Escalation
@@ -391,6 +378,22 @@ def evaluate_decision(
             )
 
     # ========================================================
+    # NOTIFICATION GATE
+    # ========================================================
+
+    # Active notification is required when:
+    # - scientific risk is high / critical, OR
+    # - community evidence adjusted the action, OR
+    # - human review is required.
+    notification_required = (
+        data.risk_level in {"high", "critical"}
+        or decision_status in {
+            "action_adjusted",
+            "human_review_required",
+        }
+    )
+
+    # ========================================================
     # 7. Explanation When No Adjustment Was Needed
     # ========================================================
 
@@ -413,11 +416,13 @@ def evaluate_decision(
 
         "risk_level": data.risk_level,
 
-        "confidence": confidence,
+        "confidence": data.confidence,
 
         "evidence_used": evidence_used,
 
         "decision_status": decision_status,
+
+        "notification_required": notification_required,
 
         "current_action": current_action,
 

@@ -7,6 +7,14 @@ from app.schemas.assistance import AssistanceRequestRecord
 
 
 class MonjedAssessment(BaseModel):
+    """
+    Final response model returned by the MONJED pipeline.
+
+    This schema represents the completed assessment only.
+    It does not perform persistence, risk calculation,
+    decision-making, or alert generation.
+    """
+
     risk: RiskAssessment
 
     decision: FinalDecision

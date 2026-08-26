@@ -150,7 +150,7 @@ print(
 
 result = send_alert_sms(
 
-    "+REDACTED_PHONE",
+    "+20xxxxxxxxxx",
 
     monjed_alert,
 

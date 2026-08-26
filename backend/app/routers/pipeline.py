@@ -58,10 +58,33 @@ from app.services.ai_adapter import (
     build_ai_payload,
 )
 
-from app.services.gemini_alert import (
+from AI.ai_alert.gemini_alert import (
     generate_alert,
 )
 
+from app.services.persistence_service import (
+    safe_persist_assessment,
+)
+
+from app.services.persistence_service import (
+    safe_persist_assessment,
+)
+
+from app.services.alert_normalizer import (
+    normalize_alert,
+)
+
+from app.services.alert_dispatcher import (
+    dispatch_alert,
+)
+
+from database.users_repository import (
+    get_recipient_phone_numbers,
+)
+
+from database.alerts_repository import (
+    create_alert,
+)
 
 router = APIRouter(
     prefix="/pipeline",
@@ -284,23 +307,64 @@ def add_ai_alert(
     accessibility_action=None,
 ) -> MonjedAssessment:
     """
-    Generate a human-readable alert from deterministic
-    MONJED backend results.
+    Complete MONJED communication + delivery pipeline.
 
-    Gemini is used only for communication.
-    It cannot change risk or operational decisions.
+    Flow:
+
+    deterministic backend assessment
+        ->
+    AI communication / deterministic fallback
+        ->
+    protected alert normalization
+        ->
+    core persistence
+        ->
+    recipient selection
+        ->
+    dashboard / SMS / voice dispatch
+        ->
+    final alert + delivery persistence
+
+    IMPORTANT:
+    - Generative AI cannot modify scientific risk.
+    - Generative AI cannot modify the deterministic decision.
+    - MongoDB cannot modify risk or decision.
+    - SMS / Voice are gated by notification_required.
     """
 
-    ai_payload = build_ai_payload(
+    # ========================================================
+    # 1. BUILD BACKEND-OWNED AI PAYLOAD
+    # ========================================================
+
+    backend_payload = build_ai_payload(
         assessment=assessment,
         accessibility=accessibility_action,
     )
 
-    ai_alert = generate_alert(
-        ai_payload
+    # ========================================================
+    # 2. AI COMMUNICATION / DETERMINISTIC FALLBACK
+    # ========================================================
+
+    raw_ai_alert = generate_alert(
+        backend_payload
     )
 
-    return MonjedAssessment(
+    # ========================================================
+    # 3. PROTECTED NORMALIZATION
+    #
+    # Backend values remain authoritative.
+    # ========================================================
+
+    normalized_alert = normalize_alert(
+        ai_alert=raw_ai_alert,
+        backend_payload=backend_payload,
+    )
+
+    # ========================================================
+    # 4. FINAL API ASSESSMENT
+    # ========================================================
+
+    final_assessment = MonjedAssessment(
         risk=assessment.risk,
         decision=assessment.decision,
         accessible_action=(
@@ -309,10 +373,140 @@ def add_ai_alert(
         assistance_request=(
             assessment.assistance_request
         ),
-        ai_alert=ai_alert,
+        ai_alert=normalized_alert,
     )
 
+    # ========================================================
+    # 5. PERSIST SCIENTIFIC RISK + DECISION
+    # ========================================================
 
+    persistence_result = (
+        safe_persist_assessment(
+            final_assessment
+        )
+    )
+
+    # ========================================================
+    # 6. RECIPIENT SELECTION
+    # ========================================================
+
+    sms_recipients = []
+
+    if normalized_alert.get(
+        "notification_required",
+        False,
+    ):
+
+        try:
+
+            sms_recipients = (
+                get_recipient_phone_numbers(
+                    assessment.risk.zone_id
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                "MONJED recipient selection warning: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+            sms_recipients = []
+
+    # ========================================================
+    # 7. DELIVERY
+    #
+    # Dispatcher itself respects notification_required.
+    # Dashboard always receives the update.
+    # ========================================================
+
+    try:
+
+        delivery_result = dispatch_alert(
+            alert=normalized_alert,
+            sms_recipients=sms_recipients,
+        )
+
+    except Exception as exc:
+
+        print(
+            "MONJED delivery warning: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        delivery_result = {
+            "dashboard":
+                None,
+
+            "sms":
+                [],
+
+            "voice":
+                {
+                    "success":
+                        False,
+
+                    "error":
+                        type(exc).__name__,
+                },
+
+            "notification_required":
+                bool(
+                    normalized_alert.get(
+                        "notification_required",
+                        False,
+                    )
+                ),
+        }
+
+    # ========================================================
+    # 8. STORE FINAL NORMALIZED ALERT + DELIVERY RESULT
+    # ========================================================
+
+    alert_for_storage = dict(
+        normalized_alert
+    )
+
+    if persistence_result.get(
+        "success"
+    ):
+
+        alert_for_storage[
+            "risk_id"
+        ] = persistence_result.get(
+            "risk_id"
+        )
+
+        alert_for_storage[
+            "decision_id"
+        ] = persistence_result.get(
+            "decision_id"
+        )
+
+    try:
+
+        create_alert(
+            alert_data=alert_for_storage,
+            delivery_result=delivery_result,
+        )
+
+    except Exception as exc:
+
+        # Delivery already happened.
+        # Database failure must not invalidate the assessment.
+        print(
+            "MONJED alert persistence warning: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    # ========================================================
+    # 9. RETURN ASSESSMENT
+    # ========================================================
+
+    return final_assessment
+
+    
 # ============================================================
 # FLOOD PIPELINE
 # ============================================================

@@ -17,7 +17,7 @@ from backend.app.services.sms.africas_talking import (
 
 
 
-PHONE_NUMBER = "+REDACTED_PHONE"
+PHONE_NUMBER = "+20xxxxxxxxxx"
 
 
 

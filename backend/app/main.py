@@ -8,7 +8,9 @@ from app.routers.decision import router as decision_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.assistance import router as assistance_router
 from app.routers.accessibility import router as accessibility_router
-
+from app.routers.dashboard import (
+    router as dashboard_router,
+)
 
 app = FastAPI(
     title="MONJED API",
@@ -29,7 +31,9 @@ app.include_router(pipeline_router)
 app.include_router(assistance_router)
 app.include_router(accessibility_router)
 app.include_router(test_ui_router)
-
+app.include_router(
+    dashboard_router
+)
 
 @app.get("/")
 def root():

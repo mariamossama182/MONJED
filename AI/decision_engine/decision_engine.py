@@ -1,390 +1,559 @@
 """
-MONJED AI - Deterministic Decision Engine
-
-
-Architecture:
-
-Risk Engine
-      |
-      ↓
-Decision Engine
-      |
-      ↓
-AI Communication
-
+MONJED - Deterministic Operational Decision Engine
 
 Responsibilities:
-- Evaluate operational situation.
-- Combine risk assessment with community evidence.
-- Select appropriate operational action.
-- Decide whether notification is required.
+- Consume an already-calculated scientific risk assessment.
+- Consider recent community evidence as operational evidence.
+- Select the appropriate operational action.
+- Decide whether an active notification is required.
+- Escalate safety-critical situations to human review.
 
-
-IMPORTANT:
-- Does NOT calculate risk.
-- Does NOT modify risk score.
-- Does NOT generate alerts.
-- Decisions are deterministic and explainable.
+IMPORTANT SAFETY RULES:
+- This engine NEVER calculates scientific risk.
+- This engine NEVER changes risk_score.
+- This engine NEVER changes risk_level.
+- This engine NEVER changes confidence.
+- Community evidence does NOT manipulate scientific risk.
+- Generative AI is NOT involved in this decision.
 """
-
 
 from datetime import datetime, timezone
 
-
-from backend.app.schemas.decision import (
-    DecisionInput,
-    FinalDecision,
-)
-
+from app.schemas.decision import DecisionInput
 
 
 # ============================================================
-# CONSTANTS
+# EVIDENCE POLICY
 # ============================================================
 
-
-HIGH_PRIORITY_EVIDENCE = {
-
+# Only evidence that clearly requires trained / human
+# intervention should trigger human review automatically.
+HUMAN_REVIEW_EVIDENCE = {
     "people_trapped",
-
-    "building_damage",
-
-    "infrastructure_damage",
-
 }
 
 
-
-ACTION_EVIDENCE = {
-
+# Evidence that may require an operational action adjustment.
+ACTION_ADJUSTMENT_EVIDENCE = {
     "blocked_road",
-
     "rising_water",
-
+    "building_damage",
+    "infrastructure_damage",
 }
 
+
+# Scientific risk levels that independently require an
+# active warning, even if there are NO community reports.
+ACTIVE_ALERT_RISK_LEVELS = {
+    "high",
+    "critical",
+}
 
 
 # ============================================================
 # HELPERS
 # ============================================================
 
-
 def _has_evidence_type(
     evidence,
     evidence_types,
 ):
     """
-    Check whether operational evidence exists.
+    Return True when at least one community evidence item
+    matches one of the requested evidence types.
     """
 
     return any(
-
         item.evidence_type in evidence_types
-
         for item in evidence
-
     )
 
 
+def _evidence_types(
+    evidence,
+):
+    """
+    Return the unique evidence types while preserving order.
+    """
+
+    return list(
+        dict.fromkeys(
+            item.evidence_type
+            for item in evidence
+        )
+    )
 
 
-def _base_actions(
+def _base_action(
     hazard,
 ):
     """
-    Default actions based on hazard type.
+    Baseline monitoring action for situations that do not
+    require an operational adjustment.
     """
 
+    if hazard == "flood":
+        return (
+            "Monitor water levels and follow official "
+            "safety guidance."
+        )
+
+    if hazard == "earthquake":
+        return (
+            "Stay away from potentially unsafe structures "
+            "and follow official emergency guidance."
+        )
+
+    return "Follow official safety guidance."
+
+
+def _high_risk_action(
+    hazard,
+):
+    """
+    Action used when scientific risk itself is high enough
+    to require active notification.
+    """
+
+    if hazard == "flood":
+        return (
+            "Move to a safer elevated area and avoid "
+            "affected locations."
+        )
+
+    if hazard == "earthquake":
+        return (
+            "Move to an open safe area away from damaged "
+            "structures."
+        )
+
+    return (
+        "Move to a safer location and follow official "
+        "emergency guidance."
+    )
+
+
+def _community_adjusted_action(
+    hazard,
+    evidence_types,
+):
+    """
+    Adapt the operational action using local community
+    evidence without changing scientific risk.
+    """
+
+    evidence_types = set(
+        evidence_types
+    )
 
     if hazard == "flood":
 
-        return {
+        if "rising_water" in evidence_types:
+            return (
+                "Move to a safer elevated area and avoid "
+                "locations where water levels are rising."
+            )
 
-            "current":
-                "Monitor water levels and follow official safety guidance.",
+        if "blocked_road" in evidence_types:
+            return (
+                "Avoid reported blocked roads and use only "
+                "safe routes recommended by local authorities."
+            )
 
-
-            "backup":
-                "Avoid flooded roads and do not cross moving water.",
-
-        }
-
-
+        if (
+            "building_damage" in evidence_types
+            or
+            "infrastructure_damage" in evidence_types
+        ):
+            return (
+                "Avoid damaged buildings and infrastructure "
+                "and move to a safer location if needed."
+            )
 
     if hazard == "earthquake":
 
-        return {
+        if (
+            "building_damage" in evidence_types
+            or
+            "infrastructure_damage" in evidence_types
+        ):
+            return (
+                "Move away from damaged buildings and "
+                "infrastructure and remain in a safe open area."
+            )
 
-            "current":
-                "Move away from unsafe structures and follow emergency guidance.",
+        if "blocked_road" in evidence_types:
+            return (
+                "Avoid reported blocked routes and damaged "
+                "areas while following official guidance."
+            )
 
-
-            "backup":
-                "Avoid damaged buildings and exposed areas.",
-
-        }
-
-
-
-    return {
-
-        "current":
-            "Follow official safety guidance.",
-
-
-        "backup":
-            "Stay alert for updates.",
-
-    }
-
-
-
-
-
-# ============================================================
-# MAIN DECISION FUNCTION
-# ============================================================
-
-
-def generate_decision(
-    decision_input: DecisionInput,
-) -> FinalDecision:
-    """
-    Generate deterministic operational decision.
-
-    Community evidence affects:
-    - action
-    - urgency
-    - human review requirement
-    - notification requirement
-
-
-    Community evidence does NOT affect:
-    - risk_score
-    - risk_level
-    """
-
-
-    actions = _base_actions(
-        decision_input.hazard
+    return _high_risk_action(
+        hazard
     )
 
 
-    evidence = decision_input.evidence
+# ============================================================
+# MAIN DECISION ENGINE
+# ============================================================
 
+def evaluate_decision(
+    data: DecisionInput,
+) -> dict:
+    """
+    Produce MONJED's deterministic operational decision.
 
-    reasons = []
+    Safety rules:
+    - Preserve scientific risk_score exactly.
+    - Preserve scientific risk_level exactly.
+    - Preserve scientific confidence exactly.
+    - Community evidence may adjust operational actions.
+    - Community evidence may trigger human review.
+    - High / critical scientific risk requires an active
+      notification even without community evidence.
+    - Gemini is not involved in this decision.
+    """
 
+    reasons: list[str] = []
 
-    status = "no_adjustment"
+    evidence_used = 0
 
-
-    notification_required = False
-
-
-    current_action = actions["current"]
-
-
-    backup_action = actions["backup"]
-
-
-
-    # ========================================================
-    # 1. HUMAN REVIEW REQUIRED
-    # ========================================================
-
-
-    if _has_evidence_type(
-
-        evidence,
-
-        HIGH_PRIORITY_EVIDENCE,
-
-    ):
-
-
-        status = "human_review_required"
-
-
-        notification_required = True
-
-
-
-        current_action = (
-
-            "Immediate human assessment is required "
-            "due to severe community impact."
-
-        )
-
-
-
-        reasons.append(
-
-            "High-priority community evidence detected."
-
-        )
-
-
+    blocked_route = False
+    people_trapped = False
+    severe_damage = False
+    rising_water = False
 
     # ========================================================
-    # 2. ACTION ADJUSTMENT REQUIRED
+    # 1. ANALYZE COMMUNITY EVIDENCE
     # ========================================================
 
+    for report in data.evidence:
 
-    elif (
+        # Ignore evidence from another zone.
+        if report.zone_id != data.zone_id:
+            continue
 
-        decision_input.risk_level
+        # Ignore evidence older than 3 hours.
+        if report.age_minutes > 180:
+            continue
 
-        in
+        evidence_used += 1
 
-        {
+        # IMPORTANT:
+        # Community evidence does NOT modify:
+        # - risk_score
+        # - risk_level
+        # - confidence
 
-            "high",
+        if report.evidence_type in {
+            "blocked_road",
+            "flooded_road",
+        }:
+            blocked_route = True
 
-            "critical",
-
-        }
-
-        or
-
-        _has_evidence_type(
-
-            evidence,
-
-            ACTION_EVIDENCE,
-
-        )
-
-    ):
-
-
-        status = "action_adjusted"
-
-
-        notification_required = True
-
-
-
-        if decision_input.hazard == "flood":
-
-
-            current_action = (
-
-                "Move to a safer elevated area "
-                "and avoid affected locations."
-
+            reason = (
+                "Recent community evidence indicates "
+                "a route may be unsafe."
             )
 
+            if reason not in reasons:
+                reasons.append(reason)
 
+        elif report.evidence_type == "people_trapped":
+            people_trapped = True
 
-        elif decision_input.hazard == "earthquake":
-
-
-            current_action = (
-
-                "Move to an open safe area "
-                "away from damaged structures."
-
+            reason = (
+                "Recent community evidence indicates "
+                "people may require trained assistance."
             )
 
+            if reason not in reasons:
+                reasons.append(reason)
 
+        elif report.evidence_type in {
+            "building_damage",
+            "infrastructure_damage",
+        }:
+            severe_damage = True
 
-        reasons.append(
+            reason = (
+                "Recent community evidence indicates "
+                "structural or infrastructure damage."
+            )
 
-            "Risk level or community evidence requires action adjustment."
+            if reason not in reasons:
+                reasons.append(reason)
 
+        elif report.evidence_type == "rising_water":
+            rising_water = True
+
+            reason = (
+                "Recent community evidence indicates "
+                "rising water levels."
+            )
+
+            if reason not in reasons:
+                reasons.append(reason)
+
+    # ========================================================
+    # 2. BASELINE ACTION
+    # ========================================================
+
+    if data.hazard == "flood":
+
+        current_action, backup_action = (
+            _get_flood_base_actions(
+                data.risk_level
+            )
         )
-
-
-
-    # ========================================================
-    # 3. LOW RISK / MONITORING
-    # ========================================================
-
 
     else:
 
-
-        reasons.append(
-
-            "No operational adjustment required."
-
+        current_action, backup_action = (
+            _get_earthquake_base_actions(
+                data.risk_level
+            )
         )
 
-
+    decision_status = "no_adjustment"
 
     # ========================================================
-    # COMMUNITY INFORMATION
+    # 3. SCIENTIFIC RISK NOTIFICATION GATE
     # ========================================================
 
+    notification_required = (
+        data.risk_level
+        in {
+            "high",
+            "critical",
+        }
+    )
 
-    if evidence:
+    if notification_required:
 
+        decision_status = "action_adjusted"
 
         reasons.append(
-
-            f"{len(evidence)} community evidence item(s) considered."
-
+            f"Scientific risk level is {data.risk_level}; "
+            "active notification is required."
         )
 
+    # ========================================================
+    # 4. HUMAN ESCALATION
+    # Highest priority
+    # ========================================================
 
+    if people_trapped:
+
+        decision_status = "human_review_required"
+
+        notification_required = True
+
+        current_action = (
+            "Request emergency or trained human assistance "
+            "for the reported situation."
+        )
+
+        backup_action = (
+            "Do not attempt unsafe rescue actions. Share the "
+            "location and available details with responders."
+        )
+
+        reasons.append(
+            "Human review is required because people may "
+            "be trapped."
+        )
 
     # ========================================================
-    # FINAL DECISION
+    # 5. FLOOD OPERATIONAL ADJUSTMENTS
     # ========================================================
 
+    elif data.hazard == "flood":
 
-    return FinalDecision(
+        if blocked_route and rising_water:
 
-        hazard=
-            decision_input.hazard,
+            decision_status = "action_adjusted"
+            notification_required = True
 
+            current_action = (
+                "Avoid floodwater and do not use routes "
+                "reported as blocked or flooded. Move away "
+                "from areas where water levels are rising."
+            )
 
-        zone_id=
-            decision_input.zone_id,
+            backup_action = (
+                "If no safe route is confirmed, remain in "
+                "the safest available elevated location and "
+                "request official assistance."
+            )
 
+        elif blocked_route:
 
-        risk_score=
-            decision_input.risk_score,
+            decision_status = "action_adjusted"
+            notification_required = True
 
+            current_action = (
+                "Do not use routes reported as blocked or "
+                "flooded. Follow verified official guidance "
+                "for a safer alternative."
+            )
 
-        risk_level=
-            decision_input.risk_level,
+            backup_action = (
+                "If no safe route is confirmed, remain in "
+                "the safest available location and request "
+                "assistance."
+            )
 
+        elif rising_water:
 
-        confidence=
-            decision_input.confidence,
+            decision_status = "action_adjusted"
+            notification_required = True
 
+            current_action = (
+                "Avoid floodwater and move away from areas "
+                "where water levels are rising."
+            )
 
-        evidence_used=
-            len(evidence),
+            backup_action = (
+                "If movement is unsafe, remain in the safest "
+                "available elevated location and request "
+                "assistance."
+            )
 
+        elif severe_damage:
 
-        decision_status=
-            status,
+            decision_status = "action_adjusted"
+            notification_required = True
 
+            current_action = (
+                "Avoid damaged buildings or infrastructure "
+                "and move to a safer location if it is safe "
+                "to do so."
+            )
 
-        notification_required=
+            backup_action = (
+                "Follow official emergency guidance and "
+                "avoid visibly damaged areas."
+            )
+
+    # ========================================================
+    # 6. EARTHQUAKE OPERATIONAL ADJUSTMENTS
+    # ========================================================
+
+    elif data.hazard == "earthquake":
+
+        if severe_damage and blocked_route:
+
+            decision_status = "action_adjusted"
+            notification_required = True
+
+            current_action = (
+                "Avoid damaged structures and routes reported "
+                "as blocked or unsafe. Follow official "
+                "emergency guidance."
+            )
+
+            backup_action = (
+                "Remain in the safest accessible location or "
+                "move to a safer open area if it is safe to "
+                "do so."
+            )
+
+        elif severe_damage:
+
+            decision_status = "action_adjusted"
+            notification_required = True
+
+            current_action = (
+                "Avoid visibly damaged structures and follow "
+                "official emergency guidance."
+            )
+
+            backup_action = (
+                "Move to a safer accessible open area if it "
+                "is safe to do so."
+            )
+
+        elif blocked_route:
+
+            decision_status = "action_adjusted"
+            notification_required = True
+
+            current_action = (
+                "Avoid routes reported as blocked or unsafe "
+                "and follow verified official guidance for "
+                "a safer alternative."
+            )
+
+            backup_action = (
+                "If a safe route is not confirmed, remain in "
+                "the safest available location until guidance "
+                "or assistance is available."
+            )
+
+    # ========================================================
+    # 7. EXPLANATION
+    # ========================================================
+
+    if not reasons:
+
+        reasons.append(
+            "Scientific risk does not currently require "
+            "an active notification."
+        )
+
+        reasons.append(
+            "No recent community evidence required "
+            "an operational action change."
+        )
+
+    if evidence_used > 0:
+
+        reasons.append(
+            f"{evidence_used} recent community evidence "
+            "item(s) were considered."
+        )
+
+    # ========================================================
+    # 8. FINAL PROTECTED DECISION
+    # ========================================================
+
+    return {
+        "hazard":
+            data.hazard,
+
+        "zone_id":
+            data.zone_id,
+
+        "risk_score":
+            data.risk_score,
+
+        "risk_level":
+            data.risk_level,
+
+        "confidence":
+            data.confidence,
+
+        "evidence_used":
+            evidence_used,
+
+        "decision_status":
+            decision_status,
+
+        "notification_required":
             notification_required,
 
-
-        current_action=
+        "current_action":
             current_action,
 
-
-        backup_action=
+        "backup_action":
             backup_action,
 
-
-        reasons=
+        "reasons":
             reasons,
 
-
-        evaluated_at=
+        "evaluated_at":
             datetime.now(
                 timezone.utc
             ),
-
-    )
+    }

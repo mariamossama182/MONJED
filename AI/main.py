@@ -1,54 +1,112 @@
-from risk_engine.earthquake import (
-    get_earthquakes,
-    parse_earthquakes,
-    extract_earthquake_features
-)
-from risk_engine.flood import (
-    get_rainfall_data,
-    parse_rainfall_data,
-    extract_flood_features
-)
-from risk_engine.scoring import (
-    calculate_earthquake_score,
-    calculate_flood_score,
-    get_risk_level
+from fastapi import FastAPI
+
+from app.api.community_reports import (
+    router as community_reports_router,
 )
 
-COUNTRY = "Kenya"
-START = "2026-07-21"
-END = "2026-08-20"
+from app.routers.flood import (
+    router as flood_router,
+)
 
-print(f"================ Risk Assessment: {COUNTRY} ================\n")
+from app.routers.earthquake import (
+    router as earthquake_router,
+)
 
-# --- 1. Earthquake Pipeline ---
-raw_eq = get_earthquakes(country=COUNTRY, start_time=START, end_time=END, min_magnitude=2.0)
-cleaned_eq = parse_earthquakes(raw_eq)
-eq_features = extract_earthquake_features(cleaned_eq)
-eq_result = calculate_earthquake_score(eq_features)
+from app.routers.test_ui import (
+    router as test_ui_router,
+)
 
-print("--- Earthquake Analysis ---")
-print(f"Features: {eq_features}")
-print(f"Score: {eq_result['score']} / 100 ({get_risk_level(eq_result['score'])})")
-print(f"Reasons: {eq_result['reasons']}\n")
+from app.routers.decision import (
+    router as decision_router,
+)
 
-# --- 2. Flood Pipeline ---
-raw_rain = get_rainfall_data(country=COUNTRY, start_date=START, end_date=END)
-cleaned_rain = parse_rainfall_data(raw_rain)
-flood_features = extract_flood_features(cleaned_rain, recent_days=3)
-flood_result = calculate_flood_score(flood_features)
+from app.routers.pipeline import (
+    router as pipeline_router,
+)
 
-print("--- Flood Analysis ---")
-print(f"Features: {flood_features}")
-print(f"Score: {flood_result['score']} / 100 ({get_risk_level(flood_result['score'])})")
-print(f"Reasons: {flood_result['reasons']}")
+from app.routers.assistance import (
+    router as assistance_router,
+)
+
+from app.routers.accessibility import (
+    router as accessibility_router,
+)
+
+from app.routers.dashboard import (
+    router as dashboard_router,
+)
 
 
+app = FastAPI(
+    title="MONJED API",
+    description=(
+        "AI-powered disaster risk interpretation "
+        "and action support platform"
+    ),
+    version="0.1.0",
+)
 
-import json
-from risk_engine.engine import evaluate_country_risk
-COUNTRY = "Kenya"
 
-print(f"Running Monjed AI Risk Engine for {COUNTRY}...\n")
-report = evaluate_country_risk(country=COUNTRY, days_window=30)
+# Routers
+app.include_router(
+    flood_router
+)
 
-print(json.dumps(report, indent=2))
+app.include_router(
+    earthquake_router
+)
+
+app.include_router(
+    community_reports_router
+)
+
+app.include_router(
+    decision_router
+)
+
+app.include_router(
+    pipeline_router
+)
+
+app.include_router(
+    assistance_router
+)
+
+app.include_router(
+    accessibility_router
+)
+
+app.include_router(
+    dashboard_router
+)
+
+app.include_router(
+    test_ui_router
+)
+
+
+@app.get("/")
+def root():
+
+    return {
+        "message":
+            "Welcome to MONJED API",
+
+        "service":
+            "MONJED API",
+
+        "status":
+            "running",
+    }
+
+
+@app.get("/health")
+def health_check():
+
+    return {
+        "status":
+            "ok",
+
+        "service":
+            "MONJED API",
+    }
