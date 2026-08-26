@@ -1,182 +1,328 @@
-﻿from datetime import datetime
+﻿"""
+MONJED AI - Decision Models
+
+Defines the contracts between:
+
+Risk Engine
+      |
+      ↓
+Decision Engine
+      |
+      ↓
+Alert Generation
+
+
+IMPORTANT:
+- Community evidence influences operational decisions only.
+- Community evidence NEVER modifies risk score.
+- AI NEVER modifies decisions.
+"""
+
+
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    BaseModel,
+    Field,
+)
 
 
 # ============================================================
 # TYPES
 # ============================================================
 
+
 EvidenceType = Literal[
-    "flooded_road",
+
     "blocked_road",
+
     "rising_water",
+
     "building_damage",
+
     "people_trapped",
+
     "infrastructure_damage",
+
     "other",
+
 ]
+
 
 
 RiskLevel = Literal[
+
+    "unknown",
+
     "low",
+
     "moderate",
+
     "high",
+
     "critical",
+
 ]
+
 
 
 HazardType = Literal[
+
     "flood",
+
     "earthquake",
+
 ]
+
 
 
 DecisionStatus = Literal[
+
     "no_adjustment",
+
     "action_adjusted",
+
+    "alert_required",
+
     "human_review_required",
+
 ]
+
 
 
 # ============================================================
 # COMMUNITY EVIDENCE
 # ============================================================
 
+
 class CommunityEvidence(BaseModel):
     """
-    Operational evidence derived from community reports.
+    Operational evidence extracted from
+    community reports.
 
-    Community evidence may influence operational decisions,
-    but it does NOT modify the scientific risk score.
+    Evidence affects operational decisions,
+    NOT scientific risk calculation.
     """
 
+
     zone_id: str = Field(
-        min_length=1
+        min_length=1,
     )
+
 
     evidence_type: EvidenceType
 
+
     description: str = Field(
+
         min_length=3,
+
         max_length=500,
+
     )
+
 
     age_minutes: int = Field(
-        ge=0
+
+        ge=0,
+
     )
 
+
     verified: bool = False
+
 
 
 # ============================================================
 # DECISION INPUT
 # ============================================================
 
+
 class DecisionInput(BaseModel):
     """
-    Input to the deterministic Decision Engine.
+    Complete input for Decision Engine.
+
+    Combines:
+
+    - Scientific risk assessment
+    - Operational community evidence
     """
+
 
     hazard: HazardType
 
+
     zone_id: str = Field(
-        min_length=1
+
+        min_length=1,
+
     )
 
-    risk_score: int = Field(
+
+    risk_score: float = Field(
+
         ge=0,
+
         le=100,
+
     )
+
 
     risk_level: RiskLevel
 
+
     confidence: float = Field(
+
         ge=0,
+
         le=1,
+
     )
+
 
     evidence: list[CommunityEvidence] = Field(
-        default_factory=list
+
+        default_factory=list,
+
     )
 
 
+
 # ============================================================
-# DECISION FROM EXISTING RISK
+# DECISION INPUT FROM RISK ENGINE
 # ============================================================
+
 
 class DecisionFromRiskInput(BaseModel):
     """
-    Risk assessment supplied to the Decision Engine.
+    Risk-only input.
 
-    Recent community evidence is retrieved separately
-    by the backend using the zone_id.
+    Community evidence is loaded separately
+    using zone_id.
     """
+
 
     hazard: HazardType
 
+
     zone_id: str = Field(
-        min_length=1
+
+        min_length=1,
+
     )
 
-    risk_score: int = Field(
+
+    risk_score: float = Field(
+
         ge=0,
+
         le=100,
+
     )
+
 
     risk_level: RiskLevel
 
+
     confidence: float = Field(
+
         ge=0,
+
         le=1,
+
     )
 
 
+
 # ============================================================
-# FINAL OPERATIONAL DECISION
+# FINAL DECISION
 # ============================================================
+
 
 class FinalDecision(BaseModel):
     """
-    Deterministic operational decision produced by MONJED.
+    Final deterministic operational decision.
 
-    Risk values remain protected from modification by
-    community evidence, accessibility adaptation, or AI.
+    Produced by Decision Engine.
+
+    Risk values are protected from:
+
+    - community evidence
+    - accessibility layer
+    - AI generation
+
     """
+
 
     hazard: HazardType
 
+
     zone_id: str = Field(
-        min_length=1
+
+        min_length=1,
+
     )
 
-    risk_score: int = Field(
+
+    # Original scientific assessment
+
+    risk_score: float = Field(
+
         ge=0,
+
         le=100,
+
     )
+
 
     risk_level: RiskLevel
 
+
     confidence: float = Field(
+
         ge=0,
+
         le=1,
+
     )
 
+
+        # Number of evidence items considered
+
     evidence_used: int = Field(
-        ge=0
+
+        ge=0,
+
     )
+
 
     decision_status: DecisionStatus
 
+
+    # Whether MONJED should send active notifications
+    #
+    # False:
+    #   Monitoring / dashboard update only
+    #
+    # True:
+    #   SMS / Voice / Emergency channels allowed
+
+    notification_required: bool = False
+
+
+
     current_action: str = Field(
-        min_length=1
+
+        min_length=1,
+
     )
 
-    backup_action: str = Field(
-        min_length=1
+    reasons: list[str] = Field(
+
+        default_factory=list,
+
     )
 
-    reasons: list[str]
 
     evaluated_at: datetime

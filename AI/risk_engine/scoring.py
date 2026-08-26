@@ -6,6 +6,8 @@ Responsible for:
 - Hazard scoring
 - Risk classification
 - Explainable reasons
+- Confidence estimation
+
 
 This module does NOT:
 - generate alerts
@@ -32,28 +34,63 @@ RISK_THRESHOLDS = {
 
 
 def get_risk_level(
-    score: float
+    score: float,
 ) -> str:
-    """
-    Convert numerical score into MONJED risk level.
-    """
 
     if score < RISK_THRESHOLDS["moderate"]:
-
         return "low"
 
-
-    elif score < RISK_THRESHOLDS["high"]:
-
+    if score < RISK_THRESHOLDS["high"]:
         return "moderate"
 
-
-    elif score < RISK_THRESHOLDS["critical"]:
-
+    if score < RISK_THRESHOLDS["critical"]:
         return "high"
 
-
     return "critical"
+
+
+
+# ============================================================
+# CONFIDENCE
+# ============================================================
+
+
+def calculate_confidence(
+    data_available=True,
+    days_analyzed=None,
+):
+    """
+    Estimate confidence based on
+    data quality.
+    """
+
+
+    if not data_available:
+
+        return 0.0
+
+
+
+    if days_analyzed is None:
+
+        return 0.7
+
+
+
+    if days_analyzed >= 14:
+
+        return 0.95
+
+
+
+    if days_analyzed >= 7:
+
+        return 0.85
+
+
+
+    return 0.7
+
 
 
 
@@ -67,18 +104,27 @@ def normalize(
     min_val,
     max_val,
 ):
-    """
-    Normalize value into 0-100 range.
-    """
+
+    try:
+
+        value = float(value)
+
+    except:
+
+        return 0.0
+
+
 
     if value <= min_val:
 
         return 0.0
 
 
+
     if value >= max_val:
 
         return 100.0
+
 
 
     return (
@@ -167,36 +213,40 @@ def calculate_earthquake_score(
 
 
 
-    final_score = (
+    score = round(
 
-        count_score
-        *
-        EARTHQUAKE_WEIGHTS["count"]
-
-        +
-
-        max_mag_score
-        *
-        EARTHQUAKE_WEIGHTS["max_magnitude"]
+        (
+            count_score
+            *
+            EARTHQUAKE_WEIGHTS["count"]
+        )
 
         +
 
-        avg_mag_score
-        *
-        EARTHQUAKE_WEIGHTS["average_magnitude"]
+        (
+            max_mag_score
+            *
+            EARTHQUAKE_WEIGHTS["max_magnitude"]
+        )
 
         +
 
-        recent_score
-        *
-        EARTHQUAKE_WEIGHTS["recent_activity"]
+        (
+            avg_mag_score
+            *
+            EARTHQUAKE_WEIGHTS["average_magnitude"]
+        )
 
-    )
+        +
 
+        (
+            recent_score
+            *
+            EARTHQUAKE_WEIGHTS["recent_activity"]
+        ),
 
-    final_score = round(
-        final_score,
         2,
+
     )
 
 
@@ -219,6 +269,7 @@ def calculate_earthquake_score(
         )
 
 
+
     if recent >= 3:
 
         reasons.append(
@@ -226,11 +277,13 @@ def calculate_earthquake_score(
         )
 
 
+
     if count >= 8:
 
         reasons.append(
             f"High earthquake frequency detected ({count} events)."
         )
+
 
 
     if count == 0:
@@ -243,40 +296,37 @@ def calculate_earthquake_score(
 
     return {
 
-        "score":
-            final_score,
-
+        "score": score,
 
         "risk_level":
-            get_risk_level(final_score),
-
+            get_risk_level(score),
 
         "confidence":
-            0.9,
-
+            calculate_confidence(
+                True
+            ),
 
         "reasons":
             reasons,
-
 
         "sub_scores":
             {
 
                 "count":
-                    round(count_score, 1),
+                    round(count_score,1),
 
                 "max_magnitude":
-                    round(max_mag_score, 1),
+                    round(max_mag_score,1),
 
                 "average_magnitude":
-                    round(avg_mag_score, 1),
+                    round(avg_mag_score,1),
 
                 "recent_activity":
-                    round(recent_score, 1),
+                    round(recent_score,1),
 
             },
-    }
 
+    }
 
 
 
@@ -287,11 +337,11 @@ def calculate_earthquake_score(
 
 FLOOD_WEIGHTS = {
 
-    "average_daily": 0.25,
+    "average_daily":0.25,
 
-    "recent_daily": 0.45,
+    "recent_daily":0.45,
 
-    "cumulative": 0.30,
+    "cumulative":0.30,
 
 }
 
@@ -300,6 +350,42 @@ FLOOD_WEIGHTS = {
 def calculate_flood_score(
     features: dict,
 ):
+
+
+    data_available = features.get(
+        "data_available",
+        True,
+    )
+
+
+    days = features.get(
+        "days_analyzed",
+        0,
+    )
+
+
+    if not data_available:
+
+        return {
+
+            "score":0,
+
+            "risk_level":
+                "unknown",
+
+            "confidence":
+                0.0,
+
+            "reasons":
+                [
+                    "Rainfall data unavailable from NASA POWER."
+                ],
+
+            "sub_scores":
+                {},
+
+        }
+
 
 
     avg_daily = features.get(
@@ -343,30 +429,32 @@ def calculate_flood_score(
 
 
 
-    final_score = (
+    score = round(
 
-        avg_score
-        *
-        FLOOD_WEIGHTS["average_daily"]
-
-        +
-
-        recent_score
-        *
-        FLOOD_WEIGHTS["recent_daily"]
+        (
+            avg_score
+            *
+            FLOOD_WEIGHTS["average_daily"]
+        )
 
         +
 
-        cumulative_score
-        *
-        FLOOD_WEIGHTS["cumulative"]
+        (
+            recent_score
+            *
+            FLOOD_WEIGHTS["recent_daily"]
+        )
 
-    )
+        +
 
+        (
+            cumulative_score
+            *
+            FLOOD_WEIGHTS["cumulative"]
+        ),
 
-    final_score = round(
-        final_score,
         2,
+
     )
 
 
@@ -389,10 +477,10 @@ def calculate_flood_score(
         )
 
 
-    if final_score < 10:
+    if score < 10:
 
         reasons.append(
-            "Low flood vulnerability detected."
+            "Low flood indicators detected."
         )
 
 
@@ -400,22 +488,30 @@ def calculate_flood_score(
     return {
 
         "score":
-            final_score,
+
+            score,
 
 
         "risk_level":
-            get_risk_level(final_score),
+
+            get_risk_level(score),
 
 
         "confidence":
-            0.9,
+
+            calculate_confidence(
+                True,
+                days,
+            ),
 
 
         "reasons":
+
             reasons,
 
 
         "sub_scores":
+
             {
 
                 "average_daily":
@@ -428,4 +524,5 @@ def calculate_flood_score(
                     round(cumulative_score,1),
 
             },
+
     }

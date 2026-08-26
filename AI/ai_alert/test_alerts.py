@@ -1,7 +1,7 @@
 import json
 
 
-from ai_alert.gemini_alert import (
+from AI.ai_alert.gemini_alert import (
     generate_alert,
     validate_alert,
 )

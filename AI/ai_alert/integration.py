@@ -1,42 +1,46 @@
 """
-MONJED AI - AI Integration Layer
+MONJED AI - Integration Layer
 
-This module is the bridge between:
+Bridge between Backend and AI modules.
 
-Backend
-    |
-    ↓
+Architecture:
+
+Backend Assessment Object
+            |
+            v
 AI Adapter
-    |
-    ↓
-Risk Engine
-    |
-    ↓
+            |
+            v
 Gemini Alert Generator
-    |
-    ↓
+            |
+            v
 Validated AI Alert
+            |
+            v
+Backend Normalization Layer
 
 
 Responsibilities:
------------------
-- Prepare safe AI input payload
-- Run AI alert generation pipeline
-- Return validated AI output
+------------------
+- Convert backend assessment into AI payload
+- Execute AI generation
+- Return validated AI result
 
 
-IMPORTANT:
+Does NOT:
 -----------
-- AI does NOT calculate final decisions.
-- AI does NOT send messages.
-- AI does NOT dispatch alerts.
-- Backend remains the source of truth.
+- Calculate risk
+- Change decisions
+- Send SMS
+- Dispatch alerts
+
+Backend remains the source of truth.
 """
 
 
 import json
-from datetime import datetime, timezone
 
+from datetime import datetime, timezone
 
 
 # ============================================================
@@ -69,12 +73,12 @@ AI_SOURCE = "MONJED_AI_PIPELINE"
 # ============================================================
 
 
-def _safe_json_print(
+def _safe_print_json(
     title: str,
-    data: dict,
+    data,
 ):
     """
-    Safe debug printing.
+    Safe debug output.
     """
 
     print(
@@ -83,91 +87,80 @@ def _safe_json_print(
 
 
     print(
-
         json.dumps(
             data,
             indent=2,
             ensure_ascii=False,
             default=str,
         )
-
     )
 
 
 
-def _validate_input(
-    assessment: dict,
+def _validate_assessment(
+    assessment,
 ):
     """
-    Validate backend assessment payload.
+    Validate MONJED assessment object.
+
+    AI receives approved backend objects only.
     """
 
-    if not isinstance(
-        assessment,
-        dict,
-    ):
 
-        raise TypeError(
-            "assessment must be a dictionary."
+    if assessment is None:
+
+        raise ValueError(
+            "Assessment cannot be None."
         )
 
 
-    if not assessment:
 
-        raise ValueError(
-            "assessment cannot be empty."
+    if not hasattr(
+        assessment,
+        "risk",
+    ):
+
+        raise TypeError(
+            "Invalid MONJED assessment object."
         )
 
 
 
 # ============================================================
-# MAIN AI PIPELINE
+# MAIN PIPELINE
 # ============================================================
 
 
 def run_ai_pipeline(
-    assessment: dict,
-    accessibility: list | None = None,
-    language: str = "en",
-) -> dict:
+    assessment,
+    accessibility=None,
+    language="en",
+):
     """
     Execute complete MONJED AI pipeline.
 
 
     Flow:
 
-    Backend Assessment
-
+    Assessment Object
             |
-            ↓
-
+            v
     AI Adapter
-
             |
-            ↓
-
-    Gemini Alert Generator
-
+            v
+    Gemini Generator
             |
-            ↓
-
-    Validation
-
-            |
-            ↓
-
-    AI Alert Response
-
+            v
+    Validated Alert
 
 
     Returns:
 
     {
-        "metadata": {},
-        "payload": {},
-        "alert": {}
+        metadata,
+        payload,
+        alert
     }
-
 
     """
 
@@ -176,20 +169,19 @@ def run_ai_pipeline(
     # 0. Validate Input
     # --------------------------------------------------------
 
-    _validate_input(
+    _validate_assessment(
         assessment
     )
 
 
-
-    start_time = datetime.now(
+    started_at = datetime.now(
         timezone.utc
     )
 
 
 
     # --------------------------------------------------------
-    # 1. Build Safe AI Payload
+    # 1. Build AI Payload
     # --------------------------------------------------------
 
     ai_payload = build_ai_payload(
@@ -204,12 +196,9 @@ def run_ai_pipeline(
 
 
 
-    _safe_json_print(
-
+    _safe_print_json(
         "AI PAYLOAD",
-
         ai_payload,
-
     )
 
 
@@ -232,29 +221,27 @@ def run_ai_pipeline(
     ):
 
         raise RuntimeError(
-            "AI alert generation failed."
+            "Gemini alert generation returned invalid response."
         )
 
 
 
-    _safe_json_print(
-
+    _safe_print_json(
         "AI ALERT",
-
         ai_alert,
-
     )
 
 
 
-    # --------------------------------------------------------
-    # 3. Metadata
-    # --------------------------------------------------------
-
-    end_time = datetime.now(
+    finished_at = datetime.now(
         timezone.utc
     )
 
+
+
+    # --------------------------------------------------------
+    # 3. Execution Metadata
+    # --------------------------------------------------------
 
     metadata = {
 
@@ -262,21 +249,28 @@ def run_ai_pipeline(
             AI_SOURCE,
 
 
+        "status":
+            "success",
+
+
         "started_at":
-            start_time.isoformat(),
+            started_at.isoformat(),
 
 
         "completed_at":
-            end_time.isoformat(),
+            finished_at.isoformat(),
 
 
         "processing_time_ms":
             int(
+
                 (
-                    end_time - start_time
+                    finished_at - started_at
+
                 ).total_seconds()
                 *
                 1000
+
             ),
 
     }
@@ -284,11 +278,10 @@ def run_ai_pipeline(
 
 
     # --------------------------------------------------------
-    # 4. Return Unified AI Result
+    # 4. Final Result
     # --------------------------------------------------------
 
     return {
-
 
         "metadata":
 
@@ -309,7 +302,7 @@ def run_ai_pipeline(
 
 
 # ============================================================
-# LOCAL TEST
+# MODULE TEST
 # ============================================================
 
 
@@ -319,7 +312,7 @@ if __name__ == "__main__":
         """
 MONJED AI Integration Layer
 
-This module should be called
-from backend services or API endpoints.
+This module is imported by backend services.
+Run full tests through backend pipeline.
 """
     )

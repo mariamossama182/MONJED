@@ -5,6 +5,8 @@ Responsibilities:
 - Fetch rainfall data from NASA POWER
 - Parse precipitation records
 - Extract flood risk features
+- Report data availability status
+
 
 This module does NOT:
 - calculate risk score
@@ -17,130 +19,102 @@ import requests
 
 
 
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+
 NASA_POWER_URL = (
     "https://power.larc.nasa.gov/"
     "api/temporal/daily/point"
 )
 
 
+REQUEST_TIMEOUT = 30
+
+
+MAX_RETRIES = 2
+
+
 
 # ============================================================
 # AFRICA COUNTRY LOCATIONS
-# Representative points for MVP coverage
+# Representative MVP coordinates
 #
-# Future upgrade:
-# country -> zones -> multiple coordinates
+# Future:
+# country -> zones -> multiple points
 # ============================================================
 
 
 COUNTRY_LOCATIONS = {
 
-
-    # =========================
-    # North Africa
-    # =========================
-
     "Egypt": {
         "latitude": 26.8206,
         "longitude": 30.8025,
-        "radius_km": 500,
     },
-
 
     "Morocco": {
         "latitude": 31.7917,
         "longitude": -7.0926,
-        "radius_km": 500,
     },
-
 
     "Algeria": {
         "latitude": 28.0339,
         "longitude": 1.6596,
-        "radius_km": 500,
     },
 
-
-
-    # =========================
-    # East Africa
-    # =========================
 
     "Kenya": {
         "latitude": -0.0236,
         "longitude": 37.9062,
-        "radius_km": 500,
     },
 
 
     "Ethiopia": {
         "latitude": 9.1450,
         "longitude": 40.4897,
-        "radius_km": 500,
     },
 
 
     "Tanzania": {
         "latitude": -6.3690,
         "longitude": 34.8888,
-        "radius_km": 500,
     },
 
 
     "Uganda": {
         "latitude": 1.3733,
         "longitude": 32.2903,
-        "radius_km": 500,
     },
 
-
-
-    # =========================
-    # Nile / Horn Region
-    # =========================
 
     "Sudan": {
         "latitude": 12.8628,
         "longitude": 30.2176,
-        "radius_km": 500,
     },
 
-
-
-    # =========================
-    # West Africa
-    # =========================
 
     "Nigeria": {
         "latitude": 9.0820,
         "longitude": 8.6753,
-        "radius_km": 500,
     },
 
 
     "Ghana": {
         "latitude": 7.9465,
         "longitude": -1.0232,
-        "radius_km": 500,
     },
 
-
-
-    # =========================
-    # Southern Africa
-    # =========================
 
     "South Africa": {
         "latitude": -30.5595,
         "longitude": 22.9375,
-        "radius_km": 500,
     },
 
 
     "Mozambique": {
         "latitude": -18.6657,
         "longitude": 35.5296,
-        "radius_km": 500,
     },
 
 }
@@ -148,17 +122,35 @@ COUNTRY_LOCATIONS = {
 
 
 # ============================================================
-# FETCH RAINFALL
+# FETCH NASA DATA
 # ============================================================
 
 
 def get_rainfall_data(
-    country,
-    start_date,
-    end_date,
-):
+    country: str,
+    start_date: str,
+    end_date: str,
+) -> dict:
     """
-    Fetch daily rainfall from NASA POWER.
+    Fetch rainfall data from NASA POWER.
+
+    Returns:
+
+    {
+        "available": True,
+        "source": "NASA_POWER",
+        "data": {...}
+    }
+
+
+    If unavailable:
+
+    {
+        "available": False,
+        "source": "NASA_POWER",
+        "error": "..."
+    }
+
     """
 
 
@@ -175,7 +167,6 @@ def get_rainfall_data(
 
 
     params = {
-
 
         "parameters":
             "PRECTOTCORR",
@@ -214,30 +205,76 @@ def get_rainfall_data(
 
 
 
-    try:
-
-        response = requests.get(
-
-            NASA_POWER_URL,
-
-            params=params,
-
-            timeout=30,
-
-        )
-
-
-        response.raise_for_status()
-
-
-        return response.json()
+    last_error = None
 
 
 
-    except requests.RequestException:
+    for _ in range(
+        MAX_RETRIES + 1
+    ):
 
 
-        return {}
+        try:
+
+            response = requests.get(
+
+                NASA_POWER_URL,
+
+                params=params,
+
+                timeout=REQUEST_TIMEOUT,
+
+            )
+
+
+            response.raise_for_status()
+
+
+
+            data = response.json()
+
+
+
+            return {
+
+                "available":
+                    True,
+
+
+                "source":
+                    "NASA_POWER",
+
+
+                "data":
+                    data,
+
+            }
+
+
+
+        except Exception as error:
+
+            last_error = str(error)
+
+
+
+    return {
+
+        "available":
+            False,
+
+
+        "source":
+            "NASA_POWER",
+
+
+        "error":
+            last_error,
+
+        "data":
+            {},
+
+    }
 
 
 
@@ -247,32 +284,45 @@ def get_rainfall_data(
 
 
 def parse_rainfall_data(
-    raw_data,
-):
+    raw_data: dict,
+) -> dict:
     """
     Extract clean rainfall values.
+
+    Returns empty data only when
+    no valid rainfall records exist.
     """
+
+
+    if not isinstance(
+        raw_data,
+        dict,
+    ):
+
+        return {}
+
+
+
+    payload = raw_data.get(
+        "data",
+        raw_data,
+    )
+
 
 
     try:
 
-
         parameters = (
-
-            raw_data
-
+            payload
             .get(
                 "properties",
                 {}
             )
-
             .get(
                 "parameter",
                 {}
             )
-
         )
-
 
 
         rainfall = parameters.get(
@@ -284,17 +334,13 @@ def parse_rainfall_data(
 
         return {
 
-
-            date:
-                value
-
+            date: value
 
             for date, value in rainfall.items()
 
-
             if isinstance(
                 value,
-                (int,float)
+                (int, float),
             )
 
             and value >= 0
@@ -304,7 +350,6 @@ def parse_rainfall_data(
 
 
     except Exception:
-
 
         return {}
 
@@ -316,24 +361,20 @@ def parse_rainfall_data(
 
 
 def extract_flood_features(
-    rainfall_data,
-    recent_days=3,
-):
+    rainfall_data: dict,
+    recent_days: int = 3,
+) -> dict:
     """
-    Extract flood features:
+    Extract flood-related rainfall features.
 
-    - Average daily rainfall
-    - Recent rainfall
-    - Cumulative rainfall
+    Does NOT calculate risk.
     """
-
 
 
     if not rainfall_data:
 
 
         return {
-
 
             "average_daily_rainfall":
                 0.0,
@@ -350,8 +391,11 @@ def extract_flood_features(
             "days_analyzed":
                 0,
 
-        }
 
+            "data_available":
+                False,
+
+        }
 
 
 
@@ -360,12 +404,11 @@ def extract_flood_features(
     )
 
 
-
     values = [
 
-        rainfall_data[date]
+        rainfall_data[d]
 
-        for date in dates
+        for d in dates
 
     ]
 
@@ -382,35 +425,9 @@ def extract_flood_features(
 
 
 
-    average_daily = (
-
-        total / days
-
-        if days
-
-        else 0
-
-    )
-
-
-
-    recent_values = values[-recent_days:]
-
-
-
-    recent_average = (
-
-        sum(recent_values)
-
-        /
-
-        len(recent_values)
-
-        if recent_values
-
-        else 0
-
-    )
+    recent_values = values[
+        -recent_days:
+    ]
 
 
 
@@ -419,16 +436,20 @@ def extract_flood_features(
 
         "average_daily_rainfall":
             round(
-                average_daily,
+                total / days,
                 2
             ),
+
 
 
         "recent_daily_rainfall":
             round(
-                recent_average,
+                sum(recent_values)
+                /
+                len(recent_values),
                 2
             ),
+
 
 
         "cumulative_rainfall":
@@ -438,7 +459,12 @@ def extract_flood_features(
             ),
 
 
+
         "days_analyzed":
             days,
+
+
+        "data_available":
+            True,
 
     }

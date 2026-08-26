@@ -13,13 +13,14 @@ Normalized Alert
         |
         +---- SMS
         |
-        +---- Voice (future)
+        +---- Voice
 
 
 IMPORTANT:
 - Does NOT generate alerts.
+- Does NOT calculate risk.
 - Does NOT modify decisions.
-- Does NOT format messages.
+- Does NOT make safety decisions.
 - Only coordinates delivery.
 """
 
@@ -34,6 +35,69 @@ from backend.app.services.sms.sms_service import (
 )
 
 
+from backend.app.services.voice.voice_service import (
+    send_voice_alert,
+)
+
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+
+def _validate_alert(
+    alert: dict,
+):
+
+    if not isinstance(
+        alert,
+        dict,
+    ):
+
+        raise TypeError(
+            "alert must be a dictionary."
+        )
+
+
+    if not alert:
+
+        raise ValueError(
+            "alert cannot be empty."
+        )
+
+
+
+# ============================================================
+# NOTIFICATION CHECK
+# ============================================================
+
+
+def _notification_allowed(
+    alert: dict,
+) -> bool:
+    """
+    Check whether active notification
+    channels are allowed.
+
+    Decision Engine is the source
+    of this information.
+    """
+
+
+    return bool(
+
+        alert.get(
+
+            "notification_required",
+
+            False,
+
+        )
+
+    )
+
+
 
 # ============================================================
 # DASHBOARD DELIVERY
@@ -44,8 +108,12 @@ def prepare_dashboard_alert(
     alert: dict,
 ) -> dict:
     """
-    Prepare alert for frontend dashboard.
+    Dashboard always receives updates.
+
+    Monitoring states are displayed
+    even when notification is disabled.
     """
+
 
     return format_dashboard_alert(
         alert
@@ -63,12 +131,10 @@ def send_sms_alert(
     phone_numbers: list[str],
 ) -> list[dict]:
     """
-    Send alert through SMS channel.
+    Send emergency SMS alerts.
 
-    SMS formatting is handled internally
-    by SMS service layer.
-
-    Dispatcher only coordinates delivery.
+    Dispatcher only coordinates.
+    SMS service handles formatting.
     """
 
 
@@ -82,21 +148,35 @@ def send_sms_alert(
         )
 
 
-
     results = []
-
 
 
     for phone in phone_numbers:
 
 
-        result = send_alert_sms(
+        try:
 
-            phone,
+            result = send_alert_sms(
 
-            alert,
+                phone,
 
-        )
+                alert,
+
+            )
+
+
+        except Exception as error:
+
+
+            result = {
+
+                "success": False,
+
+                "error":
+                    str(error),
+
+            }
+
 
 
         results.append(
@@ -106,6 +186,7 @@ def send_sms_alert(
                 "phone":
                     phone,
 
+
                 "result":
                     result,
 
@@ -114,31 +195,29 @@ def send_sms_alert(
         )
 
 
-
     return results
 
 
 
 # ============================================================
-# VOICE READY
+# VOICE DELIVERY
 # ============================================================
 
 
 def prepare_voice_alert(
     alert: dict,
-) -> None:
+) -> dict:
     """
-    Future voice alert integration.
+    Generate voice alert.
 
-    Reserved for:
-    - Text To Speech
-    - Voice assistants
-    - Accessibility channels
-
-    Not implemented yet.
+    Voice provider is isolated
+    inside voice service layer.
     """
 
-    return None
+
+    return send_voice_alert(
+        alert
+    )
 
 
 
@@ -152,16 +231,28 @@ def dispatch_alert(
     sms_recipients: list[str] | None = None,
 ) -> dict:
     """
-    Main MONJED alert delivery function.
+    Main MONJED delivery coordinator.
 
-    Sends alert to available channels.
 
-    Input:
-        Normalized MONJED alert.
+    Behavior:
 
-    Output:
-        Delivery status per channel.
+    notification_required = False
+
+        Dashboard only
+
+
+    notification_required = True
+
+        Dashboard
+        SMS
+        Voice
+
     """
+
+
+    _validate_alert(
+        alert
+    )
 
 
 
@@ -184,7 +275,13 @@ def dispatch_alert(
 
         "voice":
 
-            prepare_voice_alert(
+            None,
+
+
+
+        "notification_required":
+
+            _notification_allowed(
                 alert
             ),
 
@@ -192,20 +289,76 @@ def dispatch_alert(
 
 
 
+    # ========================================================
+    # Emergency Channels
+    # ========================================================
+
+
+    if not _notification_allowed(
+        alert
+    ):
+
+
+        result["voice"] = {
+
+            "success":
+                False,
+
+            "message":
+                "Notification not required. Dashboard update only.",
+
+        }
+
+
+        return result
+
+
+
+    # ========================================================
+    # SMS
+    # ========================================================
+
+
     if sms_recipients:
 
 
-        result["sms"] = (
+        result["sms"] = send_sms_alert(
 
-            send_sms_alert(
+            alert,
 
-                alert,
-
-                sms_recipients,
-
-            )
+            sms_recipients,
 
         )
+
+
+
+    # ========================================================
+    # Voice
+    # ========================================================
+
+
+    try:
+
+
+        result["voice"] = prepare_voice_alert(
+
+            alert
+
+        )
+
+
+    except Exception as error:
+
+
+        result["voice"] = {
+
+            "success":
+                False,
+
+            "error":
+                str(error),
+
+        }
 
 
 

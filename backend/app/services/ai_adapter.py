@@ -1,5 +1,5 @@
 """
-Monjed AI - AI Adapter
+MONJED AI - AI Adapter
 
 Converts deterministic MONJED backend assessment
 into a safe AI communication payload.
@@ -20,13 +20,18 @@ Gemini Alert Layer
 IMPORTANT:
 - AI does NOT calculate risk.
 - AI does NOT make decisions.
-- AI does NOT modify actions.
-- AI only generates human-readable communication.
+- AI does NOT modify scientific risk.
+- AI receives backend-approved actions only.
+- Backend remains the source of truth.
 """
 
 
 from copy import deepcopy
 
+
+# ============================================================
+# CONSTANTS
+# ============================================================
 
 
 SUPPORTED_LANGUAGES = {
@@ -38,6 +43,7 @@ SUPPORTED_LANGUAGES = {
 
 
 VALID_RISK_LEVELS = {
+    "unknown",
     "low",
     "moderate",
     "high",
@@ -61,9 +67,12 @@ DEFAULT_COUNTRY = "Egypt"
 # ============================================================
 
 
-def _validate_language(
-    language: str,
-) -> str:
+def _validate_language(language) -> str:
+    """
+    Normalize requested communication language.
+
+    Unsupported languages safely fall back to English.
+    """
 
     normalized = (
         str(language)
@@ -78,10 +87,12 @@ def _validate_language(
     )
 
 
-
 def _validate_accessibility_needs(
     accessibility_needs,
-):
+) -> list:
+    """
+    Validate supported accessibility needs.
+    """
 
     if not accessibility_needs:
         return []
@@ -109,51 +120,65 @@ def _validate_accessibility_needs(
 
 
         if value not in VALID_ACCESSIBILITY_NEEDS:
-
             raise ValueError(
                 f"Unsupported accessibility need: {need}"
             )
 
 
         if value not in normalized:
-
-            normalized.append(value)
+            normalized.append(
+                value
+            )
 
 
     return normalized
 
 
-
 def _validate_risk(
     risk,
-):
+) -> str:
+    """
+    Validate backend scientific risk fields.
+
+    Does not calculate or reinterpret risk.
+    """
 
     risk_level = (
-        str(risk.risk_level)
+        str(
+            getattr(
+                risk,
+                "risk_level",
+                "",
+            )
+        )
         .lower()
         .strip()
     )
 
 
     if risk_level not in VALID_RISK_LEVELS:
-
         raise ValueError(
             f"Invalid risk level: {risk_level}"
         )
 
 
+    score = getattr(
+        risk,
+        "risk_score",
+        None,
+    )
+
+
     if not isinstance(
-        risk.risk_score,
+        score,
         (int, float),
     ):
-
         raise TypeError(
             "risk_score must be numeric."
         )
 
 
-    if not 0 <= risk.risk_score <= 100:
-
+    if not 0 <= score <= 100:
         raise ValueError(
             "risk_score must be between 0 and 100."
         )
@@ -162,17 +187,71 @@ def _validate_risk(
     return risk_level
 
 
+def _get_confidence(
+    risk,
+):
+    """
+    Read and validate backend confidence.
+
+    Confidence remains backend-owned.
+
+    Missing confidence is allowed for compatibility,
+    but if provided it must be between 0 and 1.
+    """
+
+    confidence = getattr(
+        risk,
+        "confidence",
+        None,
+    )
+
+
+    if confidence is None:
+        return None
+
+
+    if not isinstance(
+        confidence,
+        (int, float),
+    ):
+        raise TypeError(
+            "confidence must be numeric."
+        )
+
+
+    if not 0 <= confidence <= 1:
+        raise ValueError(
+            "confidence must be between 0 and 1."
+        )
+
+
+    return float(
+        confidence
+    )
+
 
 def _safe_text(
     value,
     default,
-):
+) -> str:
+    """
+    Safely convert a value to text.
+    """
 
     if value is None:
         return default
 
-    return value
 
+    text = str(
+        value
+    ).strip()
+
+
+    return (
+        text
+        if text
+        else default
+    )
 
 
 # ============================================================
@@ -184,23 +263,28 @@ def build_ai_payload(
     assessment,
     accessibility=None,
     language="en",
-):
-
+) -> dict:
     """
     Convert MONJED backend assessment
     into a controlled AI communication payload.
 
-    Gemini receives ONLY approved backend outputs.
+    Gemini receives approved backend outputs only.
+
+    Scientific risk and operational decisions
+    remain backend-owned.
     """
 
+
+    # --------------------------------------------------------
+    # Validate assessment structure
+    # --------------------------------------------------------
 
     if not hasattr(
         assessment,
         "risk",
     ):
-
         raise TypeError(
-            "Invalid MONJED assessment object."
+            "Invalid MONJED assessment object: risk is missing."
         )
 
 
@@ -208,11 +292,9 @@ def build_ai_payload(
         assessment,
         "decision",
     ):
-
         raise TypeError(
-            "Invalid MONJED decision object."
+            "Invalid MONJED assessment object: decision is missing."
         )
-
 
 
     risk = assessment.risk
@@ -220,8 +302,16 @@ def build_ai_payload(
     decision = assessment.decision
 
 
+    # --------------------------------------------------------
+    # Validate backend scientific risk
+    # --------------------------------------------------------
 
     risk_level = _validate_risk(
+        risk
+    )
+
+
+    risk_confidence = _get_confidence(
         risk
     )
 
@@ -231,59 +321,83 @@ def build_ai_payload(
     )
 
 
+    # --------------------------------------------------------
+    # Backend decision remains source of truth
+    # --------------------------------------------------------
 
     current_action = _safe_text(
-        decision.current_action,
+        getattr(
+            decision,
+            "current_action",
+            None,
+        ),
         "Follow official safety guidance.",
     )
 
 
     backup_action = _safe_text(
-        decision.backup_action,
+        getattr(
+            decision,
+            "backup_action",
+            None,
+        ),
         "Follow local authority instructions.",
     )
 
 
     decision_status = _safe_text(
-        decision.decision_status,
+        getattr(
+            decision,
+            "decision_status",
+            None,
+        ),
         "no_adjustment",
     )
 
 
+    notification_required = bool(
+        getattr(
+            decision,
+            "notification_required",
+            False,
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # Accessibility layer
+    # --------------------------------------------------------
 
     accessibility_needs = []
 
     accessibility_instructions = []
 
 
-
     if accessibility:
-
 
         accessibility_needs = (
             _validate_accessibility_needs(
-                accessibility.accessibility_needs
+                getattr(
+                    accessibility,
+                    "accessibility_needs",
+                    [],
+                )
             )
         )
 
 
         accessibility_instructions = deepcopy(
-            accessibility.communication_requirements
+            getattr(
+                accessibility,
+                "communication_requirements",
+                [],
+            )
         )
 
 
-        current_action = _safe_text(
-            accessibility.adapted_current_action,
-            current_action,
-        )
-
-
-        backup_action = _safe_text(
-            accessibility.adapted_backup_action,
-            backup_action,
-        )
-
-
+    # --------------------------------------------------------
+    # Country
+    # --------------------------------------------------------
 
     country = getattr(
         assessment,
@@ -301,11 +415,32 @@ def build_ai_payload(
         )
 
 
+    country = _safe_text(
+        country,
+        DEFAULT_COUNTRY,
+    )
+
+
+    # --------------------------------------------------------
+    # Zone
+    # --------------------------------------------------------
+
+    zone_id = _safe_text(
+        getattr(
+            risk,
+            "zone_id",
+            None,
+        ),
+        "UNKNOWN",
+    )
+
+
+    # --------------------------------------------------------
+    # Final controlled AI payload
+    # --------------------------------------------------------
 
     return {
 
-
-        # AI safety metadata
         "source":
             "MONJED_BACKEND",
 
@@ -318,9 +453,8 @@ def build_ai_payload(
             "MONJED_DECISION_ENGINE",
 
 
-
         "zone_id":
-            risk.zone_id,
+            zone_id,
 
 
         "country":
@@ -331,83 +465,96 @@ def build_ai_payload(
             language,
 
 
+        # ====================================================
+        # SCIENTIFIC RISK — BACKEND OWNED
+        # ====================================================
 
         "hazards": [
-
             {
-
                 "hazard":
-                    risk.hazard,
-
+                    getattr(
+                        risk,
+                        "hazard",
+                        "unknown",
+                    ),
 
                 "risk_score":
                     risk.risk_score,
 
-
                 "risk_level":
                     risk_level,
 
+                "confidence":
+                    risk_confidence,
 
                 "reasons":
                     deepcopy(
-                        risk.reasons
+                        getattr(
+                            risk,
+                            "reasons",
+                            [],
+                        )
                     ),
-
             }
-
         ],
 
 
+        # ====================================================
+        # COMMUNITY OPERATIONAL EVIDENCE
+        # ====================================================
 
-        "community_evidence":
-
-            {
-
-                "matching_reports":
-                    max(
+        "community_evidence": {
+            "matching_reports":
+                max(
+                    0,
+                    getattr(
+                        decision,
+                        "evidence_used",
                         0,
-                        decision.evidence_used,
-                    )
-
-            },
-
+                    ),
+                )
+        },
 
 
-        "decision":
+        # ====================================================
+        # DETERMINISTIC BACKEND DECISION
+        # ====================================================
 
-            {
+        "decision": {
 
-                "decision_status":
-                    decision_status,
+            "decision_status":
+                decision_status,
+
+            "notification_required":
+                notification_required,
+
+            "current_action":
+                current_action,
+
+            "backup_action":
+                backup_action,
+
+            "accessibility_instructions":
+                deepcopy(
+                    accessibility_instructions
+                ),
+        },
 
 
-                "current_action":
-                    current_action,
-
-
-                "backup_action":
-                    backup_action,
-
-
-                "accessibility_instructions":
-                    accessibility_instructions,
-
-            },
-
-
+        # ====================================================
+        # ACCESSIBILITY
+        # ====================================================
 
         "accessibility_needs":
             accessibility_needs,
 
 
+        # ====================================================
+        # CONFIDENCE METADATA
+        # ====================================================
 
-        "confidence":
-
-            {
-
-                "source":
-                    "backend",
-
-            },
-
+        "confidence": {
+            "source":
+                "backend",
+        },
     }

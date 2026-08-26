@@ -1,19 +1,26 @@
 """
-MONJED Africa's Talking SMS Provider
+MONJED AI - Africa's Talking SMS Provider
 
 Low-level SMS communication layer.
 
 Responsibilities:
 - Communicate with Africa's Talking REST API.
-- Return normalized responses.
+- Send SMS requests.
+- Return normalized provider responses.
 
-This module contains NO MONJED business logic.
+IMPORTANT:
+- Contains NO MONJED business logic.
+- Does NOT calculate risk.
+- Does NOT format alerts.
+- Can be replaced with another provider.
 """
+
 
 import json
 import urllib.parse
 import urllib.request
 import urllib.error
+
 
 
 from backend.app.services.sms.config import (
@@ -23,13 +30,145 @@ from backend.app.services.sms.config import (
 )
 
 
+
 # ============================================================
-# CONFIG
+# CONFIGURATION
 # ============================================================
+
 
 AFRICAS_TALKING_SMS_URL = (
     "https://api.sandbox.africastalking.com/version1/messaging"
 )
+
+
+REQUEST_TIMEOUT_SECONDS = 15
+
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+
+def _validate_input(
+    phone_number: str,
+    message: str,
+) -> str | None:
+
+
+    if not AFRICAS_TALKING_USERNAME:
+        return "Missing Africa's Talking username"
+
+
+    if not AFRICAS_TALKING_API_KEY:
+        return "Missing Africa's Talking API key"
+
+
+    if not isinstance(
+        phone_number,
+        str,
+    ) or not phone_number.strip():
+
+        return "Invalid phone number"
+
+
+
+    if not isinstance(
+        message,
+        str,
+    ) or not message.strip():
+
+        return "Invalid message"
+
+
+
+    return None
+
+
+
+
+
+def _parse_json_response(
+    body: str,
+):
+
+    if not body:
+        return None
+
+
+    try:
+
+        return json.loads(body)
+
+
+    except json.JSONDecodeError:
+
+        return {
+            "raw_response": body
+        }
+
+
+
+
+
+def _validate_provider_response(
+    provider_response: dict | None,
+):
+
+    """
+    Validate Africa's Talking response.
+
+    HTTP 201 alone does not mean
+    SMS was delivered.
+    """
+
+
+    if not isinstance(
+        provider_response,
+        dict,
+    ):
+
+        return False, "Empty provider response"
+
+
+
+    sms_data = provider_response.get(
+        "SMSMessageData",
+        {}
+    )
+
+
+
+    recipients = sms_data.get(
+        "Recipients",
+        []
+    )
+
+
+
+    if not recipients:
+
+        return False, sms_data.get(
+            "Message",
+            "No recipients accepted"
+        )
+
+
+
+    for recipient in recipients:
+
+
+        if recipient.get(
+            "status"
+        ) == "Success":
+
+            return True, None
+
+
+
+    return False, "SMS delivery failed"
+
+
 
 
 # ============================================================
@@ -41,49 +180,43 @@ def send_sms(
     phone_number: str,
     message: str,
 ) -> dict:
-    """
-    Send SMS using Africa's Talking API.
-
-    Returns normalized MONJED response.
-    """
 
 
-    if not AFRICAS_TALKING_USERNAME:
+    validation_error = _validate_input(
+
+        phone_number,
+
+        message,
+
+    )
+
+
+    if validation_error:
+
         return {
+
             "success": False,
-            "error": "Missing Africa's Talking username",
-        }
 
+            "stage":
+                "validation",
 
-    if not AFRICAS_TALKING_API_KEY:
-        return {
-            "success": False,
-            "error": "Missing Africa's Talking API key",
-        }
+            "error":
+                validation_error,
 
-
-    if not phone_number:
-        return {
-            "success": False,
-            "error": "Phone number is required",
-        }
-
-
-    if not message:
-        return {
-            "success": False,
-            "error": "Message is empty",
         }
 
 
 
     payload = {
 
+
         "username":
             AFRICAS_TALKING_USERNAME,
 
+
         "to":
             phone_number,
+
 
         "message":
             message,
@@ -91,36 +224,51 @@ def send_sms(
     }
 
 
+
     if AFRICAS_TALKING_SENDER_ID:
 
         payload["from"] = (
+
             AFRICAS_TALKING_SENDER_ID
+
         )
 
 
-    encoded_data = urllib.parse.urlencode(
+
+    encoded_payload = urllib.parse.urlencode(
+
         payload
+
     ).encode(
+
         "utf-8"
+
     )
+
 
 
     request = urllib.request.Request(
 
         AFRICAS_TALKING_SMS_URL,
 
-        data=encoded_data,
+        data=encoded_payload,
 
         headers={
 
             "apiKey":
                 AFRICAS_TALKING_API_KEY,
 
+
             "Accept":
                 "application/json",
 
+
             "Content-Type":
                 "application/x-www-form-urlencoded",
+
+
+            "User-Agent":
+                "MONJED-AI-SMS-Service",
 
         },
 
@@ -132,8 +280,11 @@ def send_sms(
     try:
 
         with urllib.request.urlopen(
+
             request,
-            timeout=15,
+
+            timeout=REQUEST_TIMEOUT_SECONDS,
+
         ) as response:
 
 
@@ -142,24 +293,67 @@ def send_sms(
             )
 
 
+            provider_response = _parse_json_response(
+                body
+            )
+
+
+
+            delivered, error = _validate_provider_response(
+
+                provider_response
+
+            )
+
+
+
             return {
 
+
                 "success":
-                    response.status == 201,
+                    delivered,
+
 
                 "status_code":
                     response.status,
 
+
+                "provider":
+                    "AFRICAS_TALKING",
+
+
+                "phone":
+                    phone_number,
+
+
                 "response":
-                    json.loads(body)
-                    if body
-                    else None,
+                    provider_response,
+
+
+                **(
+
+                    {
+
+                        "error":
+                            error,
+
+                        "stage":
+                            "provider",
+
+                    }
+
+                    if not delivered
+
+                    else {}
+
+                ),
 
             }
 
 
 
     except urllib.error.HTTPError as error:
+
 
         body = error.read().decode(
             "utf-8"
@@ -168,14 +362,48 @@ def send_sms(
 
         return {
 
-            "success":
-                False,
+
+            "success": False,
+
+
+            "stage":
+                "http_error",
+
 
             "status_code":
                 error.code,
 
+
+            "provider":
+                "AFRICAS_TALKING",
+
+
             "error":
-                body,
+                _parse_json_response(body),
+
+        }
+
+
+
+    except urllib.error.URLError as error:
+
+
+        return {
+
+
+            "success": False,
+
+
+            "stage":
+                "connection",
+
+
+            "provider":
+                "AFRICAS_TALKING",
+
+
+            "error":
+                str(error.reason),
 
         }
 
@@ -183,10 +411,20 @@ def send_sms(
 
     except Exception as error:
 
+
         return {
 
-            "success":
-                False,
+
+            "success": False,
+
+
+            "stage":
+                "unknown",
+
+
+            "provider":
+                "AFRICAS_TALKING",
+
 
             "error":
                 str(error),
