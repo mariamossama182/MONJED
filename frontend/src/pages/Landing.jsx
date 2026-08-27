@@ -284,40 +284,8 @@ const COVERAGE = [
   "South Africa",
 ];
 
-/** Nepal flood — muted autoplay; UI chrome cropped + covered until playing. */
-const NEPAL_FLOOD_YT_ID = "BgTzsnLhqJc";
-const NEPAL_FLOOD_EMBED = `https://www.youtube-nocookie.com/embed/${NEPAL_FLOOD_YT_ID}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&loop=1&playlist=${NEPAL_FLOOD_YT_ID}&playsinline=1&modestbranding=1&rel=0&showinfo=0&cc_load_policy=0&start=1`;
-
-function SilentFloodFilm({ videoId, embedSrc }) {
-  const [uncovered, setUncovered] = useState(false);
-
-  useEffect(() => {
-    // Hide YouTube's first-paint play/pause chrome behind the poster.
-    const t = window.setTimeout(() => setUncovered(true), 1600);
-    return () => window.clearTimeout(t);
-  }, []);
-
-  return (
-    <div className="relative aspect-video overflow-hidden rounded-lg border border-line bg-[#0b1220] shadow-[0_20px_50px_-28px_rgba(15,23,42,0.55)]">
-      <iframe
-        title="Flood crisis film"
-        src={embedSrc}
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[128%] w-[128%] max-w-none -translate-x-1/2 -translate-y-1/2 border-0"
-        allow="autoplay; encrypted-media"
-        referrerPolicy="strict-origin-when-cross-origin"
-        tabIndex={-1}
-      />
-      <img
-        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-        alt=""
-        aria-hidden="true"
-        className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
-          uncovered ? "opacity-0" : "opacity-100"
-        }`}
-      />
-    </div>
-  );
-}
+/** Nepal flood before/after — local asset for WHY MONJED EXISTS. */
+const NEPAL_BEFORE_AFTER = "/media/nepal-before-after.jpg";
 
 /** Real documented African disasters — Wikimedia Commons */
 const DISASTER_IMAGES = [
@@ -559,7 +527,7 @@ export default function Landing() {
         </div>
       </div>
 
-      {/* WHY NOW — copy left, Nepal flood video framed right */}
+      {/* WHY NOW — copy left, Nepal before/after image right */}
       <section
         id="why-now"
         className="border-b border-line bg-night"
@@ -588,20 +556,15 @@ export default function Landing() {
           </div>
 
           <Reveal delay={120}>
-            {!reduced ? (
-              <SilentFloodFilm
-                videoId={NEPAL_FLOOD_YT_ID}
-                embedSrc={NEPAL_FLOOD_EMBED}
+            <figure className="overflow-hidden rounded-lg border border-line bg-raised shadow-[0_20px_50px_-28px_rgba(15,23,42,0.55)]">
+              <img
+                src={NEPAL_BEFORE_AFTER}
+                alt="Nepal flood before and after: a riverside town intact, then buried under mud and debris"
+                className="w-full h-auto object-cover"
+                loading="lazy"
+                decoding="async"
               />
-            ) : (
-              <div className="overflow-hidden rounded-lg border border-line bg-raised">
-                <img
-                  src={`https://i.ytimg.com/vi/${NEPAL_FLOOD_YT_ID}/hqdefault.jpg`}
-                  alt="Flood crisis"
-                  className="aspect-video w-full object-cover"
-                />
-              </div>
-            )}
+            </figure>
           </Reveal>
         </div>
       </section>
