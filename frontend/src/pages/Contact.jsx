@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CheckCircle2, Mail, MessageSquare, Building2 } from "lucide-react";
 import TextField from "../components/ui/TextField.jsx";
-import { submitContact, ApiError } from "../lib/api.js";
+import { submitContact, ApiError, toE164 } from "../lib/api.js";
 
 const TOPICS = [
   { id: "technical", label: "Technical error", icon: MessageSquare },
@@ -21,11 +21,12 @@ export default function ContactPage() {
     setBusy(true);
     const data = new FormData(e.target);
     try {
+      const phoneRaw = String(data.get("phone") || "").trim();
       await submitContact({
-        topic,
         name: String(data.get("name") || "").trim(),
         email: String(data.get("email") || "").trim(),
-        phone: String(data.get("phone") || "").trim(),
+        phone: toE164(phoneRaw) || undefined,
+        subject: TOPICS.find((t) => t.id === topic)?.label || topic,
         message: String(data.get("message") || "").trim(),
       });
       setSent(true);
@@ -105,7 +106,7 @@ export default function ContactPage() {
           label="Phone (optional)"
           name="phone"
           type="tel"
-          placeholder="+254 …"
+          placeholder="+2547XXXXXXXX"
         />
         <label className="block">
           <span className="block text-xs font-mono tracking-wide text-slate mb-1.5">
@@ -115,7 +116,7 @@ export default function ContactPage() {
             name="message"
             required
             rows={5}
-            minLength={10}
+            minLength={5}
             className="w-full rounded-md border border-line bg-panel px-3 py-2.5 text-sm leading-relaxed focus:outline-none focus:border-amber"
             placeholder="Describe the issue, or how you’d like to partner…"
           />

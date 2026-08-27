@@ -111,10 +111,11 @@ export function ProfilePanel({ open, onClose }) {
     }
   }
 
-  function save(e) {
+  async function save(e) {
     e.preventDefault();
     setSaving(true);
     setErr("");
+    setMsg("");
     try {
       const patch = {
         name: form.name.trim() || session.name,
@@ -126,13 +127,14 @@ export function ProfilePanel({ open, onClose }) {
         patch.vehicleType = form.vehicleType.trim();
         patch.capacity = Number(form.capacity) || 0;
       }
-      if (session.role === "user") {
+      if (session.role === "user" || session.role === "citizen") {
         const c = COUNTRIES.find((x) => x.code === form.countryCode);
         patch.zone = form.zone.trim();
         patch.countryCode = form.countryCode;
         patch.country = c?.name || form.country.trim();
+        patch.zone_id = form.countryCode || session.zone_id;
       }
-      updateProfile(patch);
+      await updateProfile(patch);
       setMsg("Profile saved.");
     } catch (ex) {
       setErr(ex.message || "Could not save profile.");
@@ -216,7 +218,7 @@ export function ProfilePanel({ open, onClose }) {
               />
             </label>
 
-            {session?.role === "user" && (
+            {(session?.role === "user" || session?.role === "citizen") && (
               <>
                 <label className="block">
                   <span className="font-mono text-[10px] tracking-wide text-slate">

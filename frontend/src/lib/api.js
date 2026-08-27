@@ -13,6 +13,16 @@ export class ApiError extends Error {
   }
 }
 
+/** Normalize to E.164 (+digits only) for backend phone validation. */
+export function toE164(phone) {
+  const raw = String(phone || "").replace(/[\s()-]/g, "");
+  if (!raw) return null;
+  const withPlus = raw.startsWith("+") ? raw : /^\d{8,15}$/.test(raw) ? `+${raw}` : null;
+  if (!withPlus) return null;
+  if (!/^\+[1-9]\d{7,14}$/.test(withPlus)) return null;
+  return withPlus;
+}
+
 function detailMessage(body, fallback) {
   if (body == null) return fallback;
   if (typeof body === "string") return body;
@@ -20,7 +30,13 @@ function detailMessage(body, fallback) {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     return detail
-      .map((item) => item?.msg || item?.message || JSON.stringify(item))
+      .map((item) => {
+        const field = Array.isArray(item?.loc)
+          ? item.loc.filter((p) => p !== "body" && p !== "query").join(".")
+          : "";
+        const msg = item?.msg || item?.message || JSON.stringify(item);
+        return field ? `${field}: ${msg}` : msg;
+      })
       .join("; ");
   }
   if (typeof body.message === "string") return body.message;
@@ -29,6 +45,20 @@ function detailMessage(body, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function authHeaders() {
+  try {
+    const raw = localStorage.getItem("monjed_session");
+    if (!raw) return {};
+    const session = JSON.parse(raw);
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
 }
 
 export async function request(path, { method = "GET", body, headers } = {}) {
@@ -40,6 +70,7 @@ export async function request(path, { method = "GET", body, headers } = {}) {
       method,
       headers: {
         Accept: "application/json",
+        ...authHeaders(),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...headers,
       },
@@ -84,6 +115,10 @@ export function put(path, body) {
   return request(path, { method: "PUT", body });
 }
 
+export function patch(path, body) {
+  return request(path, { method: "PATCH", body });
+}
+
 export function healthCheck() {
   return get("/health");
 }
@@ -109,8 +144,13 @@ export function submitCommunityReport(payload) {
 }
 
 /** GET /api/community-reports */
-export function listCommunityReports() {
-  return get("/api/community-reports");
+export function listCommunityReports(params = {}) {
+  const q = new URLSearchParams();
+  if (params.zone_id) q.set("zone_id", params.zone_id);
+  if (params.verified != null) q.set("verified", String(params.verified));
+  if (params.resolved != null) q.set("resolved", String(params.resolved));
+  const qs = q.toString();
+  return get(`/api/community-reports${qs ? `?${qs}` : ""}`);
 }
 
 /** GET /api/community-reports/recent/{zone_id} */
@@ -118,21 +158,22 @@ export function recentCommunityReports(zoneId) {
   return get(`/api/community-reports/recent/${encodeURIComponent(zoneId)}`);
 }
 
-/** POST /api/community-reports/{id}/verify */
+/** PATCH /api/community-reports/{id}/verify */
 export function verifyCommunityReport(id) {
-  return post(`/api/community-reports/${encodeURIComponent(id)}/verify`);
+  return patch(`/api/community-reports/${encodeURIComponent(id)}/verify`);
 }
 
-/** POST /api/community-reports/{id}/resolve */
+/** PATCH /api/community-reports/{id}/resolve */
 export function resolveCommunityReport(id) {
-  return post(`/api/community-reports/${encodeURIComponent(id)}/resolve`);
+  return patch(`/api/community-reports/${encodeURIComponent(id)}/resolve`);
 }
 
+/** POST /auth/contact */
 export function submitContact(payload) {
   return post("/auth/contact", payload);
 }
 
-/** Auth */
+/** Auth — POST /auth/register | /auth/login | /auth/admin */
 export function registerUser(payload) {
   return post("/auth/register", payload);
 }
@@ -145,12 +186,13 @@ export function loginAdmin(payload) {
   return post("/auth/admin", payload);
 }
 
-export function getAdminProfile() {
-  return get("/auth/admin/profile");
+/** GET/PATCH /users/{user_id}/profile */
+export function getUserProfile(userId) {
+  return get(`/users/${encodeURIComponent(userId)}/profile`);
 }
 
-export function updateAdminProfile(payload) {
-  return put("/auth/admin/profile", payload);
+export function updateUserProfile(userId, payload) {
+  return patch(`/users/${encodeURIComponent(userId)}/profile`, payload);
 }
 
 /** Assistance / volunteers */
@@ -158,17 +200,24 @@ export function registerVolunteer(payload) {
   return post("/assistance/volunteers", payload);
 }
 
-export function loginVolunteer(payload) {
-  return post("/assistance/volunteers/login", payload);
+export function listVolunteers(params = {}) {
+  const q = new URLSearchParams();
+  if (params.zone_id) q.set("zone_id", params.zone_id);
+  if (params.available != null) q.set("available", String(params.available));
+  const qs = q.toString();
+  return get(`/assistance/volunteers${qs ? `?${qs}` : ""}`);
 }
 
-export function listVolunteers() {
-  return get("/assistance/volunteers");
-}
-
+/** PATCH /assistance/volunteers/{id} body: { available } */
 export function setVolunteerAvailability(volunteerId, available) {
-  return post(
-    `/assistance/volunteers/${encodeURIComponent(volunteerId)}/availability?available=${available}`
+  return patch(`/assistance/volunteers/${encodeURIComponent(volunteerId)}`, {
+    available: Boolean(available),
+  });
+}
+
+export function listVolunteerInbox(volunteerId) {
+  return get(
+    `/assistance/volunteers/${encodeURIComponent(volunteerId)}/requests`
   );
 }
 
@@ -177,7 +226,12 @@ export function createAssistanceRequest(payload) {
 }
 
 export function listAssistanceRequests() {
-  return get("/assistance/requests");
+  return get("/assistance/requests/pending");
+}
+
+/** Prefer volunteer inbox when id known; falls back to pending queue. */
+export function listAllAssistanceForOps() {
+  return get("/assistance/requests/pending");
 }
 
 export function listPendingAssistance() {
@@ -245,6 +299,7 @@ export function pipelineFlood(payload, accessibilityNeeds = []) {
 export const api = {
   get,
   post,
+  patch,
   healthCheck,
   assessFloodRisk,
   assessEarthquakeRisk,
@@ -258,12 +313,12 @@ export const api = {
   registerUser,
   loginUser,
   loginAdmin,
-  getAdminProfile,
-  updateAdminProfile,
+  getUserProfile,
+  updateUserProfile,
   registerVolunteer,
-  loginVolunteer,
   listVolunteers,
   setVolunteerAvailability,
+  listVolunteerInbox,
   createAssistanceRequest,
   listAssistanceRequests,
   listPendingAssistance,

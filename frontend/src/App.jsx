@@ -18,7 +18,7 @@ import AdminLoginPage from "./pages/AdminLogin.jsx";
 import AdminPage from "./pages/Admin.jsx";
 import NotFoundPage from "./pages/NotFound.jsx";
 
-const MEMBER_ROLES = ["user", "volunteer", "admin"];
+const MEMBER_ROLES = ["user", "citizen", "volunteer", "admin"];
 
 export default function App() {
   return (

@@ -15,7 +15,7 @@ import {
 import { useAuth } from "../lib/auth.jsx";
 import {
   healthCheck,
-  listAssistanceRequests,
+  listVolunteerInbox,
   resolveAssistanceRequest,
   ApiError,
 } from "../lib/api.js";
@@ -122,17 +122,23 @@ export default function VolunteerDashboardPage() {
   const [loadError, setLoadError] = useState("");
   const [busyId, setBusyId] = useState("");
 
-  const volunteerId = session?.id;
+  const volunteerId = session?.volunteer_id || session?.id;
 
   const refresh = useCallback(async () => {
     setLoadError("");
+    if (!volunteerId) {
+      setRequests([]);
+      setApiStatus("down");
+      setLoadError("No volunteer profile linked to this account.");
+      return;
+    }
     try {
-      const [ok, all] = await Promise.all([
+      const [ok, inbox] = await Promise.all([
         healthCheck().then(() => true).catch(() => false),
-        listAssistanceRequests(),
+        listVolunteerInbox(volunteerId),
       ]);
       setApiStatus(ok ? "ok" : "down");
-      setRequests(Array.isArray(all) ? all : []);
+      setRequests(Array.isArray(inbox) ? inbox : []);
     } catch (err) {
       setApiStatus("down");
       setLoadError(
@@ -140,7 +146,7 @@ export default function VolunteerDashboardPage() {
       );
       setRequests([]);
     }
-  }, []);
+  }, [volunteerId]);
 
   useEffect(() => {
     refresh();
@@ -148,11 +154,7 @@ export default function VolunteerDashboardPage() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  const mine = useMemo(
-    () =>
-      requests.filter((r) => r.assigned_volunteer_id === volunteerId),
-    [requests, volunteerId]
-  );
+  const mine = useMemo(() => requests, [requests]);
 
   const assigned = mine.filter((r) => isActiveStatus(r.status));
   const completed = mine.filter((r) => r.status === "resolved");

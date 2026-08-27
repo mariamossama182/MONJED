@@ -107,7 +107,7 @@ function ProfilePanel({ open, onClose }) {
           patch.vehicleType = form.vehicleType.trim();
           patch.capacity = Number(form.capacity) || 0;
         }
-        updateProfile(patch);
+        await updateProfile(patch);
       }
       setMsg("Profile saved.");
     } catch (ex) {

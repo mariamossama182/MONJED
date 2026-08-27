@@ -1,6 +1,25 @@
 ﻿from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _normalize_optional_phone(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    cleaned = (
+        value.strip()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+    if not cleaned:
+        return None
+    if not cleaned.startswith("+") and cleaned.isdigit():
+        cleaned = f"+{cleaned}"
+    return cleaned
 
 
 class ContactRequest(BaseModel):
@@ -33,6 +52,28 @@ class ContactRequest(BaseModel):
         min_length=5,
         max_length=2000,
     )
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_optional_phone(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("subject", mode="before")
+    @classmethod
+    def normalize_subject(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
 
 
 class ContactResponse(BaseModel):

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Phone, MapPin, UserRound } from "lucide-react";
+import { Phone, MapPin, UserRound, Mail } from "lucide-react";
 import { useAuth } from "../lib/auth.jsx";
 import { useNavLoad } from "../components/PageLoader.jsx";
 import TextField from "../components/ui/TextField.jsx";
@@ -39,7 +39,7 @@ export default function LoginPage() {
     const data = new FormData(e.target);
     try {
       await loginAsUser(
-        String(data.get("phone") || "").trim(),
+        String(data.get("identifier") || "").trim(),
         String(data.get("password") || "")
       );
       go(afterLogin, { label: "Opening your map…" });
@@ -59,11 +59,13 @@ export default function LoginPage() {
     try {
       await signupUser({
         name: String(data.get("name") || "").trim(),
+        email: String(data.get("email") || "").trim(),
         phone: String(data.get("phone") || "").trim(),
         password: String(data.get("password") || ""),
         country: country?.name || countryCode,
         countryCode,
         zone: String(data.get("zone") || "").trim(),
+        notification_consent: true,
       });
       go(afterLogin, { label: "Opening your map…" });
     } catch (err) {
@@ -83,8 +85,8 @@ export default function LoginPage() {
       </h1>
       <p className="mt-3 text-sm text-slate leading-relaxed">
         {mode === "login"
-          ? "Log in with the phone number you registered with to open the map, report, and request help."
-          : "Register once with your country so we can show risk for your area first — and later send alerts to your phone."}
+          ? "Log in with the email or phone you registered with to open the map, report, and request help."
+          : "Register with email and country so we can show risk for your area — and send alerts when you opt in."}
       </p>
 
       {error && (
@@ -97,15 +99,14 @@ export default function LoginPage() {
         <>
           <form onSubmit={onLogin} className="mt-6 space-y-4">
             <TextField
-              label="Phone number"
-              name="phone"
-              icon={Phone}
-              type="tel"
+              label="Email or phone"
+              name="identifier"
+              icon={Mail}
               required
-              minLength={7}
-              placeholder="+254 7XX XXX XXX"
+              minLength={3}
+              placeholder="you@example.com or +2547…"
             />
-            <PasswordField label="Password" name="password" required minLength={4} />
+            <PasswordField label="Password" name="password" required minLength={8} />
             <button
               type="submit"
               disabled={busy}
@@ -139,13 +140,19 @@ export default function LoginPage() {
               minLength={2}
             />
             <TextField
-              label="Phone number"
+              label="Email"
+              name="email"
+              icon={Mail}
+              type="email"
+              required
+              placeholder="you@example.com"
+            />
+            <TextField
+              label="Phone (optional, for SMS alerts)"
               name="phone"
               icon={Phone}
               type="tel"
-              required
-              minLength={7}
-              placeholder="+254 7XX XXX XXX"
+              placeholder="+254712345678"
             />
             <label className="block">
               <span className="block text-xs font-mono tracking-wide text-slate mb-1.5">
@@ -174,8 +181,8 @@ export default function LoginPage() {
               label="Password"
               name="password"
               required
-              minLength={4}
-              placeholder="Create a password"
+              minLength={8}
+              placeholder="At least 8 characters"
             />
             <button
               type="submit"

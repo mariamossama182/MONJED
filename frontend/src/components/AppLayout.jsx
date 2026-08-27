@@ -24,6 +24,7 @@ export default function AppLayout() {
   const showMemberNav =
     isSignedIn &&
     (session?.role === "user" ||
+      session?.role === "citizen" ||
       location.pathname.startsWith("/map") ||
       location.pathname.startsWith("/report") ||
       location.pathname.startsWith("/help") ||

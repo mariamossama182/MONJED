@@ -1,12 +1,42 @@
 ﻿from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 RegisterRole = Literal[
     "citizen",
     "volunteer",
 ]
+
+
+def _normalize_optional_phone(value):
+    """Treat blank / spaced phone as missing; keep E.164 digits with +."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+
+    cleaned = (
+        value.strip()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+    if not cleaned:
+        return None
+    if not cleaned.startswith("+") and cleaned.isdigit():
+        cleaned = f"+{cleaned}"
+    return cleaned
+
+
+def _normalize_optional_text(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    cleaned = value.strip()
+    return cleaned or None
 
 
 class RegisterRequest(BaseModel):
@@ -60,6 +90,30 @@ class RegisterRequest(BaseModel):
 
     notification_consent: bool = False
 
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_optional_phone(value)
+
+    @field_validator("zone_id", "country", mode="before")
+    @classmethod
+    def normalize_optional_strings(cls, value):
+        return _normalize_optional_text(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def normalize_display_name(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 class LoginRequest(BaseModel):
 
@@ -75,6 +129,13 @@ class LoginRequest(BaseModel):
         min_length=1,
         max_length=128,
     )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
 
 class AuthUserResponse(BaseModel):
