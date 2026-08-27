@@ -88,7 +88,7 @@ class RegisterRequest(BaseModel):
         default_factory=list
     )
 
-    notification_consent: bool = False
+    notification_consent: bool = True
 
     @field_validator("phone", mode="before")
     @classmethod

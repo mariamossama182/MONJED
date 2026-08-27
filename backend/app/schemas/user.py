@@ -59,6 +59,21 @@ class UserProfileResponse(BaseModel):
     notification_consent: bool = False
 
 
+class UserListItem(BaseModel):
+    """Ops directory row — no passwords, phone masked."""
+
+    user_id: str
+    display_name: str | None = None
+    role: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    zone_id: str | None = None
+    country: str | None = None
+    preferred_language: str = "en"
+    notification_consent: bool = False
+    sms_eligible: bool = False
+
+
 class UserProfileUpdate(BaseModel):
     display_name: str | None = Field(
         default=None,

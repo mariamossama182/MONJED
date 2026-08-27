@@ -504,8 +504,11 @@ def add_ai_alert(
     # 9. RETURN ASSESSMENT
     # ========================================================
 
-    return final_assessment
-
+    return final_assessment.model_copy(
+        update={
+            "delivery": delivery_result,
+        }
+    )
     
 # ============================================================
 # FLOOD PIPELINE

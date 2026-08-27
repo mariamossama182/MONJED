@@ -23,6 +23,7 @@ import {
   listAssistanceRequests,
   listCommunityReports,
   listVolunteers as listVolunteersApi,
+  listPlatformUsers,
   matchAssistanceRequest,
   resolveCommunityReport,
   verifyCommunityReport,
@@ -100,23 +101,26 @@ export default function AdminPage() {
   const [reports, setReports] = useState([]);
   const [help, setHelp] = useState([]);
   const [volunteers, setVolunteers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loadError, setLoadError] = useState("");
   const [actionBusyId, setActionBusyId] = useState(null);
 
   const loadLive = useCallback(async () => {
     setLoadError("");
     try {
-      const [ok, reqs, vols, community] = await Promise.all([
+      const [ok, reqs, vols, community, platformUsers] = await Promise.all([
         healthCheck()
           .then(() => true)
           .catch(() => false),
         listAssistanceRequests().catch(() => []),
         listVolunteersApi().catch(() => []),
         listCommunityReports().catch(() => null),
+        listPlatformUsers().catch(() => []),
       ]);
       setApiStatus(ok ? "ok" : "down");
       setHelp(Array.isArray(reqs) ? reqs : []);
       setVolunteers(Array.isArray(vols) ? vols : []);
+      setUsers(Array.isArray(platformUsers) ? platformUsers : []);
       if (Array.isArray(community)) {
         setReports(community.map(mapCommunityReport));
       } else if (community == null) {
@@ -151,6 +155,10 @@ export default function AdminPage() {
   ).length;
   const helpDone = help.filter((r) => r.status === "resolved").length;
   const availableVols = volunteers.filter((v) => v.available).length;
+  const smsEligibleUsers = users.filter((u) => u.sms_eligible).length;
+  const citizenUsers = users.filter(
+    (u) => (u.role || "").toLowerCase() === "citizen"
+  ).length;
 
   const reportStatusSegments = [
     { label: "New", value: pending, color: "#c9852a" },
@@ -306,9 +314,15 @@ export default function AdminPage() {
       count: help.length,
     },
     {
+      id: "users",
+      label: "Users",
+      icon: Users,
+      count: users.length,
+    },
+    {
       id: "network",
       label: "Volunteers",
-      icon: Users,
+      icon: Shield,
       count: volunteers.length,
     },
     { id: "engine", label: "Flood engine", icon: Waves },
@@ -319,6 +333,7 @@ export default function AdminPage() {
     inbox: "Ops inbox",
     reports: "Ground reports",
     help: "Help queue",
+    users: "Platform users",
     network: "Volunteer network",
     engine: "Flood engine",
   };
@@ -401,6 +416,13 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setSection("users")}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-line px-3.5 py-2 text-sm hover:border-amber/40"
+                >
+                  Users
+                </button>
+                <button
+                  type="button"
                   onClick={() => setSection("network")}
                   className="inline-flex items-center gap-1.5 rounded-md border border-line px-3.5 py-2 text-sm hover:border-amber/40"
                 >
@@ -420,18 +442,18 @@ export default function AdminPage() {
                 icon: Radio,
               },
               {
-                label: "HELP ACTIVE",
-                value: helpAssigned,
-                hint: "Assigned / in progress",
-                tone: "text-teal",
-                icon: Shield,
+                label: "SIGNED-UP USERS",
+                value: users.length,
+                hint: `${smsEligibleUsers} SMS-eligible · ${citizenUsers} citizens`,
+                tone: "text-bone",
+                icon: Users,
               },
               {
                 label: "VOLUNTEERS UP",
                 value: `${availableVols}/${volunteers.length || 0}`,
                 hint: "Available now",
-                tone: "text-bone",
-                icon: Users,
+                tone: "text-mist",
+                icon: Shield,
               },
               {
                 label: "NEW REPORTS",
@@ -911,6 +933,74 @@ export default function AdminPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {section === "users" && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate max-w-2xl leading-relaxed">
+            People who created accounts on the platform. Flood pipeline SMS goes
+            to users marked SMS-eligible in the same zone as the run (phone +
+            notification consent + zone_id).
+          </p>
+          <div className="flex flex-wrap gap-3 text-xs font-mono text-slate">
+            <span className="rounded-md border border-line px-2.5 py-1">
+              Total {users.length}
+            </span>
+            <span className="rounded-md border border-teal/30 bg-teal/10 text-teal px-2.5 py-1">
+              SMS-eligible {smsEligibleUsers}
+            </span>
+            <span className="rounded-md border border-line px-2.5 py-1">
+              Citizens {citizenUsers}
+            </span>
+          </div>
+          <div className="rounded-xl border border-line overflow-hidden">
+            <div className="grid grid-cols-[1.2fr_1fr_0.6fr_0.5fr_0.7fr] gap-2 px-4 py-2.5 bg-raised/40 font-mono text-[10px] tracking-wide text-slate border-b border-line">
+              <span>NAME</span>
+              <span>CONTACT</span>
+              <span>ZONE</span>
+              <span>ROLE</span>
+              <span>SMS</span>
+            </div>
+            {users.length === 0 && (
+              <p className="text-sm text-slate p-8 text-center border-t border-line">
+                No signed-up users yet (or Mongo is unavailable). Citizen
+                signups from /login appear here.
+              </p>
+            )}
+            {users.map((u) => (
+              <div
+                key={u.user_id}
+                className="grid grid-cols-[1.2fr_1fr_0.6fr_0.5fr_0.7fr] gap-2 px-4 py-3 border-t border-line items-center text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">
+                    {u.display_name || "—"}
+                  </p>
+                  <p className="text-[11px] text-muted font-mono truncate">
+                    {u.user_id}
+                  </p>
+                </div>
+                <div className="min-w-0 text-xs text-slate">
+                  <p className="truncate">{u.email || "—"}</p>
+                  <p className="font-mono truncate">{u.phone || "no phone"}</p>
+                </div>
+                <span className="font-mono text-xs">
+                  {u.zone_id || "—"}
+                </span>
+                <span className="font-mono text-[10px] uppercase text-slate">
+                  {u.role || "—"}
+                </span>
+                <span
+                  className={`font-mono text-[10px] ${
+                    u.sms_eligible ? "text-teal" : "text-muted"
+                  }`}
+                >
+                  {u.sms_eligible ? "ELIGIBLE" : "NO"}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

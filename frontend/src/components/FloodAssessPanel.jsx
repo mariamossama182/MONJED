@@ -237,7 +237,7 @@ export default function FloodAssessPanel({
             </div>
           )}
           {(delivery || sms) && (
-            <div className="pt-2 border-t border-line space-y-1.5">
+            <div className="pt-2 border-t border-line space-y-2">
               <span className="font-mono text-xs text-slate">DELIVERY / SMS</span>
               {delivery?.notification_required != null && (
                 <p className="text-xs text-mist">
@@ -245,10 +245,37 @@ export default function FloodAssessPanel({
                   {String(delivery.notification_required)}
                 </p>
               )}
-              {Array.isArray(sms) && (
-                <p className="text-xs text-mist">
-                  SMS recipients / results: {sms.length}
+              {Array.isArray(sms) && sms.length === 0 && (
+                <p className="text-xs text-slate">
+                  No SMS recipients for this zone (need users with phone +
+                  consent + matching zone_id), or notification was not
+                  required.
                 </p>
+              )}
+              {Array.isArray(sms) && sms.length > 0 && (
+                <ul className="space-y-1.5">
+                  {sms.map((row, i) => {
+                    const phone = row?.phone || row?.result?.phone || "—";
+                    const ok =
+                      row?.result?.success === true ||
+                      row?.success === true;
+                    const err =
+                      row?.result?.error ||
+                      row?.error ||
+                      row?.result?.message;
+                    return (
+                      <li
+                        key={`${phone}-${i}`}
+                        className="text-xs text-mist font-mono leading-relaxed"
+                      >
+                        {phone}{" "}
+                        <span className={ok ? "text-teal" : "text-crimson"}>
+                          {ok ? "sent" : err || "failed"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
               {sms && !Array.isArray(sms) && (
                 <p className="text-xs text-mist font-mono break-all">

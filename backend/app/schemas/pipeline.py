@@ -24,3 +24,6 @@ class MonjedAssessment(BaseModel):
     assistance_request: AssistanceRequestRecord | None = None
 
     ai_alert: dict | None = None
+
+    # SMS / dashboard delivery summary for ops UI.
+    delivery: dict | None = None

@@ -186,6 +186,15 @@ export function loginAdmin(payload) {
   return post("/auth/admin", payload);
 }
 
+/** GET /users — platform directory for ops */
+export function listPlatformUsers(params = {}) {
+  const q = new URLSearchParams();
+  if (params.role) q.set("role", params.role);
+  if (params.zone_id) q.set("zone_id", params.zone_id);
+  const qs = q.toString();
+  return get(`/users${qs ? `?${qs}` : ""}`);
+}
+
 /** GET/PATCH /users/{user_id}/profile */
 export function getUserProfile(userId) {
   return get(`/users/${encodeURIComponent(userId)}/profile`);
@@ -313,6 +322,7 @@ export const api = {
   registerUser,
   loginUser,
   loginAdmin,
+  listPlatformUsers,
   getUserProfile,
   updateUserProfile,
   registerVolunteer,
