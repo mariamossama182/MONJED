@@ -1,6 +1,6 @@
 ﻿from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 SupportedLanguage = Literal[
@@ -16,6 +16,25 @@ AccessibilityNeed = Literal[
     "hearing",
     "cognitive",
 ]
+
+
+def _normalize_optional_phone(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return value
+    cleaned = (
+        value.strip()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
+    if not cleaned:
+        return None
+    if not cleaned.startswith("+") and cleaned.isdigit():
+        cleaned = f"+{cleaned}"
+    return cleaned
 
 
 class UserProfileResponse(BaseModel):
@@ -90,3 +109,16 @@ class UserProfileUpdate(BaseModel):
     accessibility_needs: list[AccessibilityNeed] | None = None
 
     notification_consent: bool | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, value):
+        return _normalize_optional_phone(value)
+
+    @field_validator("work_email", mode="before")
+    @classmethod
+    def normalize_work_email(cls, value):
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            return cleaned or None
+        return value
