@@ -11,6 +11,7 @@ from app.routers.assistance import router as assistance_router
 from app.routers.accessibility import router as accessibility_router
 from app.routers.dashboard import router as dashboard_router
 
+from app.routers import users
 
 app = FastAPI(
     title="MONJED API",
@@ -59,7 +60,7 @@ app.include_router(assistance_router)
 app.include_router(accessibility_router)
 app.include_router(test_ui_router)
 app.include_router(dashboard_router)
-
+app.include_router(users.router)
 
 # ============================================================
 # ROOT
