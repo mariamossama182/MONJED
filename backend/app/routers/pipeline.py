@@ -79,7 +79,7 @@ from app.services.alert_dispatcher import (
 )
 
 from database.users_repository import (
-    get_recipient_phone_numbers,
+    get_alert_recipients_by_zone,
 )
 
 from database.alerts_repository import (
@@ -400,7 +400,7 @@ def add_ai_alert(
         try:
 
             sms_recipients = (
-                get_recipient_phone_numbers(
+                get_alert_recipients_by_zone(
                     assessment.risk.zone_id
                 )
             )

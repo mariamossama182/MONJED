@@ -23,7 +23,7 @@ IMPORTANT:
 - Does NOT make safety decisions.
 - Only coordinates delivery.
 """
-
+from copy import deepcopy
 
 from AI.ai_alert.alert_formatter import (
     format_dashboard_alert,
@@ -126,41 +126,221 @@ def prepare_dashboard_alert(
 # ============================================================
 
 
+SUPPORTED_RECIPIENT_LANGUAGES = {
+    "en",
+    "ar",
+    "sw",
+    "fr",
+}
+
+
+def _normalize_sms_recipient(
+    recipient,
+) -> dict:
+    """
+    Normalize one SMS recipient.
+
+    Supports the new recipient structure:
+
+    {
+        "user_id": "...",
+        "phone": "...",
+        "preferred_language": "ar",
+        "accessibility_needs": [...]
+    }
+
+    A plain phone string is still supported
+    for backward compatibility with existing tests.
+    """
+
+
+    # --------------------------------------------------------
+    # Backward compatibility
+    # --------------------------------------------------------
+
+    if isinstance(
+        recipient,
+        str,
+    ):
+
+        phone = recipient.strip()
+
+        if not phone:
+            raise ValueError(
+                "Recipient phone cannot be empty."
+            )
+
+        return {
+            "user_id":
+                None,
+
+            "phone":
+                phone,
+
+            "preferred_language":
+                "en",
+
+            "accessibility_needs":
+                [],
+        }
+
+
+    # --------------------------------------------------------
+    # Structured recipient
+    # --------------------------------------------------------
+
+    if not isinstance(
+        recipient,
+        dict,
+    ):
+
+        raise TypeError(
+            "SMS recipient must be a dictionary or phone string."
+        )
+
+
+    phone = (
+        recipient.get(
+            "phone"
+        )
+        or recipient.get(
+            "phone_number"
+        )
+    )
+
+
+    if not isinstance(
+        phone,
+        str,
+    ) or not phone.strip():
+
+        raise ValueError(
+            "Recipient phone is missing."
+        )
+
+
+    phone = phone.strip()
+
+
+    language = str(
+        recipient.get(
+            "preferred_language",
+            "en",
+        )
+    ).strip().lower()
+
+
+    if language not in SUPPORTED_RECIPIENT_LANGUAGES:
+
+        language = "en"
+
+
+    accessibility_needs = recipient.get(
+        "accessibility_needs",
+        [],
+    )
+
+
+    if not isinstance(
+        accessibility_needs,
+        list,
+    ):
+
+        accessibility_needs = []
+
+
+    return {
+        "user_id":
+            recipient.get(
+                "user_id"
+            ),
+
+        "phone":
+            phone,
+
+        "preferred_language":
+            language,
+
+        "accessibility_needs":
+            accessibility_needs,
+    }
+
+
+
 def send_sms_alert(
     alert: dict,
-    phone_numbers: list[str],
+    recipients: list,
 ) -> list[dict]:
     """
-    Send emergency SMS alerts.
+    Send an emergency SMS to each recipient
+    using that recipient's preferred language.
 
-    Dispatcher only coordinates.
-    SMS service handles formatting.
+    IMPORTANT:
+    - Scientific risk is unchanged.
+    - Decision is unchanged.
+    - notification_required is unchanged.
+    - Only communication metadata is adapted.
     """
 
 
     if not isinstance(
-        phone_numbers,
+        recipients,
         list,
     ):
 
         raise TypeError(
-            "phone_numbers must be a list."
+            "recipients must be a list."
         )
 
 
     results = []
 
 
-    for phone in phone_numbers:
+    for raw_recipient in recipients:
+
+
+        normalized_recipient = None
 
 
         try:
 
+            normalized_recipient = (
+                _normalize_sms_recipient(
+                    raw_recipient
+                )
+            )
+
+
+            # Each recipient receives an isolated
+            # communication copy of the SAME alert.
+            localized_alert = deepcopy(
+                alert
+            )
+
+
+            localized_alert[
+                "language"
+            ] = normalized_recipient[
+                "preferred_language"
+            ]
+
+
+            localized_alert[
+                "accessibility_needs"
+            ] = deepcopy(
+                normalized_recipient[
+                    "accessibility_needs"
+                ]
+            )
+
+
             result = send_alert_sms(
 
-                phone,
+                normalized_recipient[
+                    "phone"
+                ],
 
-                alert,
+                localized_alert,
 
             )
 
@@ -170,7 +350,8 @@ def send_sms_alert(
 
             result = {
 
-                "success": False,
+                "success":
+                    False,
 
                 "error":
                     str(error),
@@ -178,26 +359,50 @@ def send_sms_alert(
             }
 
 
+        delivery_record = {
+
+            "user_id":
+                (
+                    normalized_recipient.get(
+                        "user_id"
+                    )
+                    if normalized_recipient
+                    else None
+                ),
+
+            "preferred_language":
+                (
+                    normalized_recipient.get(
+                        "preferred_language",
+                        "en",
+                    )
+                    if normalized_recipient
+                    else "en"
+                ),
+
+            "result":
+                result,
+
+        }
+
+
+        # Preserve current delivery structure
+        # for existing persistence/debugging logic.
+        if normalized_recipient:
+
+            delivery_record[
+                "phone"
+            ] = normalized_recipient[
+                "phone"
+            ]
+
 
         results.append(
-
-            {
-
-                "phone":
-                    phone,
-
-
-                "result":
-                    result,
-
-            }
-
+            delivery_record
         )
 
 
     return results
-
-
 
 # ============================================================
 # VOICE DELIVERY
@@ -228,8 +433,9 @@ def prepare_voice_alert(
 
 def dispatch_alert(
     alert: dict,
-    sms_recipients: list[str] | None = None,
+    sms_recipients: list | None = None,
 ) -> dict:
+
     """
     Main MONJED delivery coordinator.
 

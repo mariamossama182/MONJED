@@ -6,7 +6,9 @@ from app.schemas.decision import (
     FinalDecision,
 )
 
-from app.engines.decision import evaluate_decision
+from app.engines.decision import (
+    evaluate_decision,
+)
 
 from app.services.community_report_store import (
     get_recent_reports,
@@ -16,6 +18,10 @@ from app.services.community_evidence_mapper import (
     reports_to_evidence,
 )
 
+
+# ============================================================
+# ROUTER
+# ============================================================
 
 router = APIRouter(
     prefix="/decision",
@@ -35,13 +41,17 @@ def evaluate_final_decision(
     data: DecisionInput,
 ) -> FinalDecision:
     """
-    Evaluate an operational decision using an existing
-    deterministic risk assessment and supplied community
-    evidence.
+    Evaluate an operational decision from an existing
+    deterministic scientific risk assessment and supplied
+    community evidence.
 
     Community evidence may adjust operational actions,
-    but it does not modify the scientific risk score
-    or risk level.
+    escalation, or notification behavior.
+
+    It must not modify:
+    - scientific risk score
+    - scientific risk level
+    - scientific confidence
     """
 
     result = evaluate_decision(
@@ -54,7 +64,7 @@ def evaluate_final_decision(
 
 
 # ============================================================
-# DECISION FROM RISK + STORED COMMUNITY EVIDENCE
+# DECISION FROM STORED COMMUNITY EVIDENCE
 # ============================================================
 
 @router.post(
@@ -65,34 +75,39 @@ def evaluate_from_risk(
     data: DecisionFromRiskInput,
 ) -> FinalDecision:
     """
-    Build the operational decision from a deterministic
-    risk assessment plus recent community evidence stored
-    for the same zone.
+    Build an operational decision from a deterministic
+    scientific risk assessment and recent community evidence
+    stored for the same zone.
 
-    Only recent reports are converted into operational
-    evidence. They do not alter the original risk score.
+    Recent community reports are converted into operational
+    evidence only.
+
+    They must not alter the original:
+    - risk score
+    - risk level
+    - confidence
     """
 
-    # --------------------------------------------------------
+    # ========================================================
     # 1. Load recent community reports
-    # --------------------------------------------------------
+    # ========================================================
 
     reports = get_recent_reports(
         zone_id=data.zone_id,
         max_age_minutes=180,
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 2. Convert reports into operational evidence
-    # --------------------------------------------------------
+    # ========================================================
 
     evidence = reports_to_evidence(
         reports
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 3. Build deterministic Decision Engine input
-    # --------------------------------------------------------
+    # ========================================================
 
     decision_input = DecisionInput(
         hazard=data.hazard,
@@ -103,13 +118,17 @@ def evaluate_from_risk(
         evidence=evidence,
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # 4. Evaluate operational decision
-    # --------------------------------------------------------
+    # ========================================================
 
     result = evaluate_decision(
         decision_input
     )
+
+    # ========================================================
+    # 5. Validate and return API response
+    # ========================================================
 
     return FinalDecision(
         **result

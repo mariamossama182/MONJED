@@ -22,7 +22,9 @@ IMPORTANT:
 # ============================================================
 # SUPPORTED LANGUAGES
 # ============================================================
-
+from backend.app.services.sms.action_localizer import (
+    localize_action,
+)
 
 SUPPORTED_LANGUAGES = {
     "en",
@@ -132,7 +134,7 @@ RISK_LEVEL_NAMES = {
     "critical": {
         "en": "CRITICAL",
         "ar": "حرج",
-        "sw": "HATARI SANA",
+        "sw": "KUBWA SANA",
         "fr": "CRITIQUE",
     },
 
@@ -178,7 +180,19 @@ def _normalize_language(
     language,
 ) -> str:
     """
-    Normalize requested language.
+    Normalize requested communication language.
+
+    Supported base languages:
+    - en
+    - ar
+    - sw
+    - fr
+
+    Regional variants such as ar-EG, fr-FR,
+    sw-KE, and en_US are reduced to the
+    supported base language.
+
+    Unsupported values safely fall back to English.
     """
 
     if not isinstance(
@@ -187,13 +201,28 @@ def _normalize_language(
     ):
         return "en"
 
-    normalized = language.strip().lower()
+    normalized = (
+        language
+        .strip()
+        .lower()
+        .replace(
+            "_",
+            "-",
+        )
+    )
 
-    if normalized not in SUPPORTED_LANGUAGES:
+    if not normalized:
         return "en"
 
-    return normalized
+    base_language = normalized.split(
+        "-",
+        1,
+    )[0]
 
+    if base_language not in SUPPORTED_LANGUAGES:
+        return "en"
+
+    return base_language
 
 
 def _safe_dict(
@@ -508,14 +537,28 @@ def format_sms_alert(
 
 
     current_action = _clean_text(
-        decision.get(
-            "current_action",
-        ),
-        _translate(
+    decision.get(
+        "current_action",
+    )
+)
+
+
+    if current_action:
+
+        current_action = localize_action(
+            current_action,
+            language,
+        )
+
+    else:
+
+        # Defensive fallback only.
+        # Normal MONJED decisions should always
+        # provide current_action.
+        current_action = _translate(
             "default_action",
             language,
-        ),
-    )
+        )
 
 
     backup_action = _clean_text(
@@ -525,6 +568,12 @@ def format_sms_alert(
     )
 
 
+    if backup_action:
+
+        backup_action = localize_action(
+            backup_action,
+            language,
+        )
 
     # --------------------------------------------------------
     # Headline

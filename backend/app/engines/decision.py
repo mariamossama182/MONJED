@@ -4,15 +4,39 @@ from app.schemas.decision import DecisionInput
 
 
 # ============================================================
-# BASELINE ACTIONS
+# CONSTANTS
+# ============================================================
+
+SUPPORTED_HAZARDS = {
+    "flood",
+    "earthquake",
+}
+
+ACTIVE_NOTIFICATION_RISK_LEVELS = {
+    "high",
+    "critical",
+}
+
+ACTION_ADJUSTMENT_STATUSES = {
+    "action_adjusted",
+    "human_review_required",
+}
+
+
+# ============================================================
+# BASELINE FLOOD ACTIONS
 # ============================================================
 
 def _get_flood_base_actions(
     risk_level: str,
 ) -> tuple[str, str]:
     """
-    Return deterministic baseline flood actions
-    based only on the backend risk level.
+    Return deterministic baseline flood safety actions
+    based only on the backend scientific risk level.
+
+    MONJED provides a direct action first.
+    Official updates may support the action,
+    but they do not replace it.
     """
 
     if risk_level == "critical":
@@ -20,76 +44,90 @@ def _get_flood_base_actions(
             "Move away from flood-prone and low-lying areas "
             "and relocate to a safer elevated location if it "
             "is safe to do so.",
-            "If safe movement is not possible, remain in the "
-            "safest available elevated location and request "
-            "official assistance.",
+            "Do not walk or drive through floodwater. If safe "
+            "movement is not possible, remain in the safest "
+            "available elevated location and request assistance.",
         )
 
     if risk_level == "high":
         return (
-            "Avoid low-lying areas and floodwater, monitor "
-            "official warnings, and prepare to move to a safer "
-            "elevated location.",
-            "If conditions worsen or access becomes unsafe, "
-            "move to the safest available elevated location "
-            "and request assistance if needed.",
+            "Stay away from low-lying areas and floodwater, "
+            "and prepare to move to a safer elevated location "
+            "before conditions become more dangerous.",
+            "Do not enter flooded roads or moving water. If "
+            "water begins rising around you, move to higher "
+            "ground if it is safe to do so.",
         )
 
     if risk_level == "moderate":
         return (
-            "Monitor official flood guidance and avoid "
-            "low-lying or flood-prone areas.",
-            "Be prepared to move to a safer elevated location "
-            "if warnings or local conditions worsen.",
+            "Avoid low-lying and flood-prone areas and keep "
+            "a safe route to higher ground available.",
+            "Stay away from floodwater. If water levels begin "
+            "to rise or nearby routes become unsafe, move to "
+            "a safer elevated location.",
         )
 
     return (
-        "Continue monitoring official flood information "
-        "and remain aware of changing local conditions.",
-        "Avoid floodwater and follow official guidance "
-        "if conditions begin to worsen.",
+        "Stay away from floodwater and avoid low-lying areas "
+        "where water may collect.",
+        "If local water levels begin rising, move away from "
+        "the affected area and use a safe route toward higher ground.",
     )
 
+
+# ============================================================
+# BASELINE EARTHQUAKE ACTIONS
+# ============================================================
 
 def _get_earthquake_base_actions(
     risk_level: str,
 ) -> tuple[str, str]:
     """
     Return deterministic post-earthquake impact actions
-    based only on the backend risk level.
+    based only on the backend scientific risk level.
 
     MONJED does not predict earthquakes.
+
+    Immediate protective actions are prioritized before
+    general monitoring guidance.
     """
 
     if risk_level == "critical":
         return (
-            "Follow official emergency guidance and avoid "
-            "damaged buildings, unstable structures, and "
-            "other visibly unsafe areas.",
-            "Move to a safer open area if it is safe to do so "
-            "and request emergency assistance when needed.",
+            "Stay away from visibly damaged buildings, "
+            "unstable structures, and falling hazards. If you "
+            "are inside a damaged building and can leave safely, "
+            "move outside and away from it.",
+            "Do not re-enter damaged buildings. Be ready for "
+            "aftershocks; if shaking starts again, Drop, Cover, "
+            "and Hold On.",
         )
 
     if risk_level == "high":
         return (
-            "Avoid visibly damaged structures and monitor "
-            "official earthquake and emergency updates.",
-            "Move to a safer open area if the current location "
-            "becomes unsafe.",
+            "Move away from visibly damaged buildings, "
+            "unstable structures, and other falling hazards "
+            "if it is safe to do so.",
+            "Do not enter damaged structures. Be ready for "
+            "aftershocks; if shaking starts again, Drop, Cover, "
+            "and Hold On.",
         )
 
     if risk_level == "moderate":
         return (
-            "Stay alert for hazards, avoid visibly damaged "
-            "structures, and monitor official updates.",
-            "Move away from unsafe structures if local "
-            "conditions deteriorate.",
+            "Stay away from visibly damaged structures, "
+            "broken glass, and other nearby hazards.",
+            "Be alert for aftershocks. If shaking starts again, "
+            "Drop, Cover, and Hold On.",
         )
 
     return (
-        "Monitor official earthquake updates and remain "
-        "aware of possible local hazards.",
-        "Avoid any structure that appears damaged or unsafe.",
+        "Check your immediate surroundings for damage or "
+        "falling hazards and stay away from any structure "
+        "that appears unsafe.",
+        "Be alert for aftershocks. If shaking starts again, "
+        "Drop, Cover, and Hold On.",
     )
 
 
@@ -104,18 +142,32 @@ def evaluate_decision(
     Produce MONJED's deterministic operational decision.
 
     Responsibilities:
-    - Preserve the scientific risk score and risk level.
-    - Consider recent community evidence.
+    - Preserve the backend scientific risk assessment.
+    - Consider recent matching community evidence.
     - Adjust operational actions when necessary.
-    - Escalate situations requiring human intervention.
+    - Escalate situations requiring trained human support.
+    - Determine whether active notification is required.
 
     Community evidence does NOT modify:
     - risk_score
     - risk_level
+    - confidence
 
     Gemini is not involved in this decision.
     """
 
+    # ========================================================
+    # 1. Validate Supported Hazard
+    # ========================================================
+
+    if data.hazard not in SUPPORTED_HAZARDS:
+        raise ValueError(
+            f"Unsupported hazard: {data.hazard}"
+        )
+
+    # ========================================================
+    # 2. Initialize Operational Evidence State
+    # ========================================================
 
     reasons: list[str] = []
 
@@ -127,35 +179,20 @@ def evaluate_decision(
     rising_water = False
 
     # ========================================================
-    # 1. Analyze Community Evidence
+    # 3. Analyze Recent Community Evidence
     # ========================================================
 
     for report in data.evidence:
 
-        # ----------------------------------------------------
-        # Ignore evidence from another zone
-        # ----------------------------------------------------
-
         if report.zone_id != data.zone_id:
             continue
-
-        # ----------------------------------------------------
-        # Ignore evidence older than 3 hours
-        # ----------------------------------------------------
 
         if report.age_minutes > 180:
             continue
 
         evidence_used += 1
 
-        # ----------------------------------------------------
-        # Blocked / flooded road
-        # ----------------------------------------------------
-
-        if report.evidence_type in {
-            "blocked_road",
-            "flooded_road",
-        }:
+        if report.evidence_type == "blocked_road":
             blocked_route = True
 
             reason = (
@@ -165,10 +202,6 @@ def evaluate_decision(
 
             if reason not in reasons:
                 reasons.append(reason)
-
-        # ----------------------------------------------------
-        # People trapped
-        # ----------------------------------------------------
 
         elif report.evidence_type == "people_trapped":
             people_trapped = True
@@ -180,10 +213,6 @@ def evaluate_decision(
 
             if reason not in reasons:
                 reasons.append(reason)
-
-        # ----------------------------------------------------
-        # Structural / infrastructure damage
-        # ----------------------------------------------------
 
         elif report.evidence_type in {
             "building_damage",
@@ -199,10 +228,6 @@ def evaluate_decision(
             if reason not in reasons:
                 reasons.append(reason)
 
-        # ----------------------------------------------------
-        # Rising water
-        # ----------------------------------------------------
-
         elif report.evidence_type == "rising_water":
             rising_water = True
 
@@ -214,31 +239,32 @@ def evaluate_decision(
             if reason not in reasons:
                 reasons.append(reason)
 
-
     # ========================================================
-    # 3. Baseline Operational Action
+    # 4. Baseline Operational Action
     # ========================================================
 
     if data.hazard == "flood":
-        current_action, backup_action = (
-            _get_flood_base_actions(
-                data.risk_level
-            )
+        current_action, backup_action = _get_flood_base_actions(
+            data.risk_level
+        )
+
+    elif data.hazard == "earthquake":
+        current_action, backup_action = _get_earthquake_base_actions(
+            data.risk_level
         )
 
     else:
-        current_action, backup_action = (
-            _get_earthquake_base_actions(
-                data.risk_level
-            )
+        raise ValueError(
+            f"Unsupported hazard: {data.hazard}"
         )
 
-    # No community evidence has changed the baseline action yet.
     decision_status = "no_adjustment"
 
-    # High / critical scientific risk independently requires
-    # an active notification even when no community reports exist.
-    if data.risk_level in {"high", "critical"}:
+    # ========================================================
+    # 5. Scientific Risk Notification Requirement
+    # ========================================================
+
+    if data.risk_level in ACTIVE_NOTIFICATION_RISK_LEVELS:
         decision_status = "action_adjusted"
 
         reasons.append(
@@ -247,13 +273,11 @@ def evaluate_decision(
         )
 
     # ========================================================
-    # 4. Human Escalation
-    #
-    # Highest priority.
+    # 6. Human Escalation
+    # Highest Operational Priority
     # ========================================================
 
     if people_trapped:
-
         decision_status = "human_review_required"
 
         current_action = (
@@ -267,14 +291,76 @@ def evaluate_decision(
         )
 
     # ========================================================
-    # 5. Flood Operational Adjustments
+    # 7. Flood Operational Adjustments
     # ========================================================
 
     elif data.hazard == "flood":
 
-        # Both route blockage and rising water
-        if blocked_route and rising_water:
+        if severe_damage and blocked_route and rising_water:
+            decision_status = "action_adjusted"
 
+            current_action = (
+                "Stay away from visibly damaged buildings or "
+                "infrastructure, avoid floodwater, and do not "
+                "use routes reported as blocked or flooded. "
+                "Move toward a safer elevated location only "
+                "if a safe route is available."
+            )
+
+            backup_action = (
+                "If no safe route is confirmed, remain in the "
+                "safest available elevated location away from "
+                "visible structural hazards and request "
+                "official assistance."
+            )
+
+        elif severe_damage and blocked_route:
+            decision_status = "action_adjusted"
+
+            current_action = (
+                "Stay away from visibly damaged buildings or "
+                "infrastructure and do not use routes reported "
+                "as blocked or flooded."
+            )
+
+            backup_action = (
+                "Remain in the safest available location until "
+                "a safer route is confirmed, and request "
+                "official assistance if needed."
+            )
+
+        elif severe_damage and rising_water:
+            decision_status = "action_adjusted"
+
+            current_action = (
+                "Stay away from visibly damaged buildings or "
+                "infrastructure, avoid floodwater, and move away "
+                "from areas where water levels are rising."
+            )
+
+            backup_action = (
+                "If safe movement is not possible, remain in "
+                "the safest available elevated location away "
+                "from visible structural hazards and request "
+                "official assistance."
+            )
+
+        elif severe_damage:
+            decision_status = "action_adjusted"
+
+            current_action = (
+                "Stay away from visibly damaged buildings or "
+                "infrastructure and avoid nearby floodwater."
+            )
+
+            backup_action = (
+                "Move to a safer location if it is safe to do "
+                "so. If safe movement is not possible, remain "
+                "in the safest available location and request "
+                "official assistance."
+            )
+
+        elif blocked_route and rising_water:
             decision_status = "action_adjusted"
 
             current_action = (
@@ -289,26 +375,22 @@ def evaluate_decision(
                 "request official assistance."
             )
 
-        # Unsafe route only
         elif blocked_route:
-
             decision_status = "action_adjusted"
 
             current_action = (
                 "Do not use routes reported as blocked or "
-                "flooded. Follow verified official guidance "
-                "for a safer alternative."
+                "flooded. Turn back and use another route only "
+                "if it is confirmed safe."
             )
 
             backup_action = (
-                "If no safe route is confirmed, remain in "
-                "the safest available location and request "
-                "assistance."
+                "If no safe route is confirmed, remain in the "
+                "safest available location away from floodwater "
+                "and request assistance."
             )
 
-        # Rising water only
         elif rising_water:
-
             decision_status = "action_adjusted"
 
             current_action = (
@@ -323,78 +405,65 @@ def evaluate_decision(
             )
 
     # ========================================================
-    # 6. Earthquake Operational Adjustments
+    # 8. Earthquake Operational Adjustments
     # ========================================================
 
     elif data.hazard == "earthquake":
 
-        # Structural damage + blocked route
         if severe_damage and blocked_route:
-
             decision_status = "action_adjusted"
 
             current_action = (
-                "Avoid damaged structures and routes reported "
-                "as blocked or unsafe. Follow official "
-                "emergency guidance."
+                "Stay away from damaged structures and do not "
+                "use routes reported as blocked or unsafe."
             )
 
             backup_action = (
-                "Remain in the safest accessible location or "
-                "move to a safer open area if it is safe to "
-                "do so."
+                "Remain in the safest accessible location if "
+                "you cannot leave safely. Wait for a confirmed "
+                "safe route or trained assistance. If shaking "
+                "starts again, Drop, Cover, and Hold On."
             )
 
-        # Structural damage
         elif severe_damage:
-
             decision_status = "action_adjusted"
 
             current_action = (
-                "Avoid visibly damaged structures and follow "
-                "official emergency guidance."
+                "Move away from visibly damaged structures "
+                "and falling hazards if it is safe to do so."
             )
 
             backup_action = (
-                "Move to a safer accessible open area if it "
-                "is safe to do so."
+                "Do not re-enter damaged buildings. If shaking "
+                "starts again, Drop, Cover, and Hold On."
             )
 
-        # Blocked route
         elif blocked_route:
-
             decision_status = "action_adjusted"
 
             current_action = (
-                "Avoid routes reported as blocked or unsafe "
-                "and follow verified official guidance for "
-                "a safer alternative."
+                "Do not use routes reported as blocked or "
+                "unsafe. Remain on a confirmed safe route "
+                "or in a safe location."
             )
 
             backup_action = (
-                "If a safe route is not confirmed, remain in "
-                "the safest available location until guidance "
-                "or assistance is available."
+                "Wait for a safer route or trained assistance "
+                "rather than crossing blocked or visibly "
+                "unsafe areas."
             )
 
     # ========================================================
-    # NOTIFICATION GATE
+    # 9. Notification Gate
     # ========================================================
 
-    # Active notification is required when:
-    # - scientific risk is high / critical, OR
-    # - community evidence adjusted the action, OR
-    # - human review is required.
     notification_required = (
-        data.risk_level in {"high", "critical"}
-        or decision_status in {
-            "action_adjusted",
-            "human_review_required",
-        }
+        data.risk_level in ACTIVE_NOTIFICATION_RISK_LEVELS
+        or decision_status in ACTION_ADJUSTMENT_STATUSES
     )
 
     # ========================================================
-    # 7. Explanation When No Adjustment Was Needed
+    # 10. Explanation When No Adjustment Was Needed
     # ========================================================
 
     if not reasons:
@@ -404,7 +473,7 @@ def evaluate_decision(
         )
 
     # ========================================================
-    # 8. Final Protected Decision
+    # 11. Final Protected Decision
     # ========================================================
 
     return {

@@ -313,16 +313,15 @@ class FinalDecision(BaseModel):
 
 
     current_action: str = Field(
+    min_length=1,
+)
 
+    backup_action: str = Field(
         min_length=1,
-
-    )
+)
 
     reasons: list[str] = Field(
-
         default_factory=list,
+)
 
-    )
-
-
-    evaluated_at: datetime
+evaluated_at: datetime
