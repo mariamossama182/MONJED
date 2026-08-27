@@ -284,6 +284,41 @@ const COVERAGE = [
   "South Africa",
 ];
 
+/** Nepal flood — muted autoplay; UI chrome cropped + covered until playing. */
+const NEPAL_FLOOD_YT_ID = "BgTzsnLhqJc";
+const NEPAL_FLOOD_EMBED = `https://www.youtube-nocookie.com/embed/${NEPAL_FLOOD_YT_ID}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&loop=1&playlist=${NEPAL_FLOOD_YT_ID}&playsinline=1&modestbranding=1&rel=0&showinfo=0&cc_load_policy=0&start=1`;
+
+function SilentFloodFilm({ videoId, embedSrc }) {
+  const [uncovered, setUncovered] = useState(false);
+
+  useEffect(() => {
+    // Hide YouTube's first-paint play/pause chrome behind the poster.
+    const t = window.setTimeout(() => setUncovered(true), 1600);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-lg border border-line bg-[#0b1220] shadow-[0_20px_50px_-28px_rgba(15,23,42,0.55)]">
+      <iframe
+        title="Flood crisis film"
+        src={embedSrc}
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[128%] w-[128%] max-w-none -translate-x-1/2 -translate-y-1/2 border-0"
+        allow="autoplay; encrypted-media"
+        referrerPolicy="strict-origin-when-cross-origin"
+        tabIndex={-1}
+      />
+      <img
+        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+        alt=""
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+          uncovered ? "opacity-0" : "opacity-100"
+        }`}
+      />
+    </div>
+  );
+}
+
 /** Real documented African disasters — Wikimedia Commons */
 const DISASTER_IMAGES = [
   {
@@ -523,6 +558,53 @@ export default function Landing() {
           ))}
         </div>
       </div>
+
+      {/* WHY NOW — copy left, Nepal flood video framed right */}
+      <section
+        id="why-now"
+        className="border-b border-line bg-night"
+      >
+        <div className="mx-auto max-w-6xl px-5 sm:px-8 py-16 sm:py-20 grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+          <div>
+            <Reveal>
+              <p className="font-mono text-[11px] tracking-[0.18em] text-amber">
+                WHY MONJED EXISTS
+              </p>
+            </Reveal>
+            <Reveal delay={80}>
+              <h2 className="mt-4 font-display text-3xl sm:text-4xl font-bold leading-[1.12] tracking-tight max-w-xl">
+                Floods like the crisis hitting Nepal are the problems MONJED is
+                built to face.
+              </h2>
+            </Reveal>
+            <Reveal delay={160}>
+              <p className="mt-6 max-w-xl text-base leading-relaxed text-slate">
+                When water rises, people need a clear signal, a plain action, and
+                a path to help if they cannot move. MONJED connects risk, alerts,
+                ground reports, and volunteers so a warning does not stop at the
+                screen.
+              </p>
+            </Reveal>
+          </div>
+
+          <Reveal delay={120}>
+            {!reduced ? (
+              <SilentFloodFilm
+                videoId={NEPAL_FLOOD_YT_ID}
+                embedSrc={NEPAL_FLOOD_EMBED}
+              />
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-line bg-raised">
+                <img
+                  src={`https://i.ytimg.com/vi/${NEPAL_FLOOD_YT_ID}/hqdefault.jpg`}
+                  alt="Flood crisis"
+                  className="aspect-video w-full object-cover"
+                />
+              </div>
+            )}
+          </Reveal>
+        </div>
+      </section>
 
       <section className="mx-auto max-w-6xl px-5 sm:px-8 py-24">
         <div className="grid md:grid-cols-[1.15fr_0.85fr] gap-10 lg:gap-14 items-center">
