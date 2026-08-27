@@ -50,17 +50,7 @@ class VolunteerInput(BaseModel):
         min_length=1,
     )
 
-    phone: str | None = Field(
-        default=None,
-        min_length=7,
-        max_length=40,
-    )
 
-    password: str | None = Field(
-        default=None,
-        min_length=4,
-        max_length=128,
-    )
 
     # --------------------------------------------------------
     # GPS
@@ -132,24 +122,3 @@ class VolunteerRecord(
 ):
 
     volunteer_id: str
-
-
-class VolunteerLoginInput(BaseModel):
-
-    phone: str = Field(..., min_length=7, max_length=40)
-    password: str = Field(..., min_length=4, max_length=128)
-
-
-class VolunteerPublic(BaseModel):
-
-    volunteer_id: str
-    name: str
-    zone_id: str
-    phone: str | None = None
-    available: bool = True
-    responder_level: ResponderLevel = "volunteer"
-    vehicle_type: str | None = None
-    capacity: int = 1
-    skills: list[VolunteerSkill] = Field(default_factory=list)
-    latitude: float | None = None
-    longitude: float | None = None

@@ -1,13 +1,3 @@
-import sys
-from pathlib import Path
-
-# Repo root (parent of backend/) so top-level AI/ package imports resolve.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,21 +10,8 @@ from app.routers.pipeline import router as pipeline_router
 from app.routers.assistance import router as assistance_router
 from app.routers.accessibility import router as accessibility_router
 from app.routers.dashboard import router as dashboard_router
-from app.routers.auth import router as auth_router
+
 from app.routers import users
-
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    try:
-        from database.indexes import create_indexes
-
-        create_indexes()
-        print("MONJED Mongo indexes ready")
-    except Exception as exc:
-        print(f"MONJED Mongo indexes skipped: {type(exc).__name__}: {exc}")
-    yield
-
 
 app = FastAPI(
     title="MONJED API",
@@ -43,7 +20,6 @@ app = FastAPI(
         "and action support platform"
     ),
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 
@@ -85,8 +61,6 @@ app.include_router(accessibility_router)
 app.include_router(test_ui_router)
 app.include_router(dashboard_router)
 app.include_router(users.router)
-app.include_router(auth_router)
-
 
 # ============================================================
 # ROOT
