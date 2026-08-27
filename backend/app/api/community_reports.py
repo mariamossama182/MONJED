@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.schemas.community_report import (
     CommunityReportInput,
@@ -13,6 +13,10 @@ from app.services.community_report_analyzer import (
 from app.services.community_report_store import (
     save_report,
     get_recent_reports,
+    get_all_reports,
+    get_report,
+    set_report_verified,
+    set_report_resolved,
 )
 
 
@@ -22,10 +26,6 @@ router = APIRouter(
 )
 
 
-# ============================================================
-# ANALYZE REPORT
-# ============================================================
-
 @router.post(
     "/analyze",
     response_model=CommunityReportAnalysis,
@@ -33,27 +33,9 @@ router = APIRouter(
 def analyze_report(
     report: CommunityReportInput,
 ) -> CommunityReportAnalysis:
-    """
-    Analyze a community report without storing it.
-
-    The public response contains only the structured analysis.
-
-    analysis_source is intentionally not returned here because
-    this endpoint's response contract is CommunityReportAnalysis.
-    """
-
-    analysis, _analysis_source = (
-        analyze_community_report(
-            report
-        )
-    )
-
+    analysis, _analysis_source = analyze_community_report(report)
     return analysis
 
-
-# ============================================================
-# SUBMIT AND STORE REPORT
-# ============================================================
 
 @router.post(
     "/submit",
@@ -62,23 +44,7 @@ def analyze_report(
 def submit_report(
     report: CommunityReportInput,
 ) -> CommunityReportRecord:
-    """
-    Analyze and store a community report.
-
-    The backend records both:
-    - the structured analysis
-    - the mechanism that produced that analysis
-
-    analysis_source does NOT indicate that the report
-    has been verified.
-    """
-
-    analysis, analysis_source = (
-        analyze_community_report(
-            report
-        )
-    )
-
+    analysis, analysis_source = analyze_community_report(report)
     return save_report(
         report=report,
         analysis=analysis,
@@ -86,9 +52,14 @@ def submit_report(
     )
 
 
-# ============================================================
-# RECENT REPORTS
-# ============================================================
+@router.get(
+    "",
+    response_model=list[CommunityReportRecord],
+)
+def list_reports() -> list[CommunityReportRecord]:
+    """All stored community reports (newest first)."""
+    return get_all_reports()
+
 
 @router.get(
     "/recent/{zone_id}",
@@ -97,10 +68,37 @@ def submit_report(
 def recent_reports(
     zone_id: str,
 ) -> list[CommunityReportRecord]:
-    """
-    Return recently stored community reports for a zone.
-    """
+    return get_recent_reports(zone_id=zone_id)
 
-    return get_recent_reports(
-        zone_id=zone_id,
-    )
+
+@router.get(
+    "/{report_id}",
+    response_model=CommunityReportRecord,
+)
+def read_report(report_id: str) -> CommunityReportRecord:
+    report = get_report(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return report
+
+
+@router.post(
+    "/{report_id}/verify",
+    response_model=CommunityReportRecord,
+)
+def verify_report(report_id: str) -> CommunityReportRecord:
+    updated = set_report_verified(report_id, True)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return updated
+
+
+@router.post(
+    "/{report_id}/resolve",
+    response_model=CommunityReportRecord,
+)
+def resolve_report(report_id: str) -> CommunityReportRecord:
+    updated = set_report_resolved(report_id, True)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    return updated

@@ -311,6 +311,13 @@ class CommunityReportRecord(BaseModel):
         ),
     )
 
+    resolved: bool = Field(
+        default=False,
+        description=(
+            "Whether ops closed this report after review."
+        ),
+    )
+
 
 
     # --------------------------------------------------------

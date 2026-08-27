@@ -185,7 +185,10 @@ def dashboard_risks(
     ),
 ):
 
-    db = get_database()
+    try:
+        db = get_database()
+    except Exception:
+        return []
 
     query = {}
 
