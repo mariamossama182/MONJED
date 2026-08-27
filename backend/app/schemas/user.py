@@ -10,7 +10,6 @@ SupportedLanguage = Literal[
     "fr",
 ]
 
-
 AccessibilityNeed = Literal[
     "mobility",
     "visual",
@@ -20,15 +19,18 @@ AccessibilityNeed = Literal[
 
 
 class UserProfileResponse(BaseModel):
-
     user_id: str
-
     display_name: str | None = None
-
     role: str | None = None
+    role_title: str | None = None
+    organization: str | None = None
+    work_email: str | None = None
+
+    # Frontend receives only a masked phone number.
+    phone: str | None = None
 
     zone_id: str | None = None
-
+    country: str | None = None
     preferred_language: str = "en"
 
     accessibility_needs: list[str] = Field(
@@ -39,16 +41,47 @@ class UserProfileResponse(BaseModel):
 
 
 class UserProfileUpdate(BaseModel):
-
     display_name: str | None = Field(
         default=None,
         min_length=1,
         max_length=100,
     )
 
+    role_title: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+    )
+
+    organization: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=150,
+    )
+
+    work_email: str | None = Field(
+        default=None,
+        min_length=5,
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+
+    # International E.164 format.
+    # Supports Egypt +20, Kenya +254, and other countries.
+    phone: str | None = Field(
+        default=None,
+        pattern=r"^\+[1-9]\d{7,14}$",
+    )
+
     zone_id: str | None = Field(
         default=None,
         min_length=1,
+        max_length=100,
+    )
+
+    country: str | None = Field(
+        default=None,
+        min_length=2,
         max_length=100,
     )
 

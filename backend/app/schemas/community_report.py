@@ -228,31 +228,20 @@ class CommunityReportRecord(BaseModel):
     - MongoDB storage
     - evidence traceability
     - AI audit history
+    - operations verification/resolution
     """
-
-
 
     report_id: str = Field(
         ...,
         min_length=1,
     )
 
-
-
     zone_id: str = Field(
         ...,
         min_length=1,
     )
 
-
-
     location: str
-
-
-
-    # --------------------------------------------------------
-    # GPS
-    # --------------------------------------------------------
 
     latitude: float | None = Field(
         default=None,
@@ -260,35 +249,17 @@ class CommunityReportRecord(BaseModel):
         le=90,
     )
 
-
-
     longitude: float | None = Field(
         default=None,
         ge=-180,
         le=180,
     )
 
-
-
-    # --------------------------------------------------------
-    # Original Report
-    # --------------------------------------------------------
-
     report_text: str
-
-
 
     reporter_id: str | None = None
 
-
-
-    # --------------------------------------------------------
-    # AI Analysis
-    # --------------------------------------------------------
-
     analysis: CommunityReportAnalysis
-
-
 
     analysis_source: AnalysisSource = Field(
         ...,
@@ -298,12 +269,6 @@ class CommunityReportRecord(BaseModel):
         ),
     )
 
-
-
-    # --------------------------------------------------------
-    # Verification
-    # --------------------------------------------------------
-
     verified: bool = Field(
         default=False,
         description=(
@@ -311,10 +276,16 @@ class CommunityReportRecord(BaseModel):
         ),
     )
 
+    resolved: bool = Field(
+        default=False,
+        description=(
+            "Whether the report has been operationally resolved "
+            "or closed by the operations team."
+        ),
+    )
 
+    verified_at: datetime | None = None
 
-    # --------------------------------------------------------
-    # Timestamp
-    # --------------------------------------------------------
+    resolved_at: datetime | None = None
 
     created_at: datetime

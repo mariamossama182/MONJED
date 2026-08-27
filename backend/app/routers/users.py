@@ -1,4 +1,4 @@
-﻿from fastapi import (
+from fastapi import (
     APIRouter,
     HTTPException,
 )
@@ -20,18 +20,67 @@ router = APIRouter(
 )
 
 
-# ============================================================
-# PROFILE SERIALIZATION
-# ============================================================
+def _mask_phone(
+    phone: str | None,
+) -> str | None:
+    """
+    Return a masked international phone number.
+
+    Full phone numbers remain stored in MongoDB for
+    notification delivery but are not exposed to frontend.
+
+    ASCII asterisks are intentionally used to avoid
+    terminal/browser encoding inconsistencies.
+    """
+
+    if not phone:
+        return None
+
+    value = str(
+        phone
+    ).strip()
+
+    if not value.startswith("+"):
+        return None
+
+    digits = value[1:]
+
+    if len(digits) <= 6:
+        return "+****"
+
+    visible_start = digits[:4]
+    visible_end = digits[-2:]
+
+    hidden_length = max(
+        len(digits) - 6,
+        2,
+    )
+
+    return (
+        "+"
+        + visible_start
+        + ("*" * hidden_length)
+        + visible_end
+    )
+
+
+def _clean_optional_text(
+    value,
+) -> str | None:
+    if value is None:
+        return None
+
+    cleaned = str(value).strip()
+
+    return cleaned or None
+
 
 def _build_profile(
     user: dict,
 ) -> UserProfileResponse:
     """
-    Return only frontend-safe profile information.
-
-    Private delivery fields such as phone numbers
-    are intentionally excluded.
+    Build a frontend-safe profile for citizens,
+    volunteers, and admin/operations users.
     """
 
     notification_consent = bool(
@@ -44,6 +93,11 @@ def _build_profile(
         )
     )
 
+    stored_phone = (
+        user.get("phone")
+        or user.get("phone_number")
+    )
+
     return UserProfileResponse(
         user_id=str(
             user.get(
@@ -53,20 +107,35 @@ def _build_profile(
         ),
 
         display_name=(
-            user.get(
-                "display_name"
-            )
-            or user.get(
-                "name"
-            )
+            user.get("display_name")
+            or user.get("name")
         ),
 
-        role=user.get(
-            "role"
+        role=user.get("role"),
+
+        role_title=user.get(
+            "role_title"
+        ),
+
+        organization=user.get(
+            "organization"
+        ),
+
+        work_email=(
+            user.get("work_email")
+            or user.get("email")
+        ),
+
+        phone=_mask_phone(
+            stored_phone
         ),
 
         zone_id=user.get(
             "zone_id"
+        ),
+
+        country=user.get(
+            "country"
         ),
 
         preferred_language=user.get(
@@ -86,10 +155,6 @@ def _build_profile(
     )
 
 
-# ============================================================
-# GET PROFILE
-# ============================================================
-
 @router.get(
     "/{user_id}/profile",
     response_model=UserProfileResponse,
@@ -97,13 +162,11 @@ def _build_profile(
 def read_user_profile(
     user_id: str,
 ) -> UserProfileResponse:
-
     user = get_user(
         user_id
     )
 
     if user is None:
-
         raise HTTPException(
             status_code=404,
             detail="User not found.",
@@ -114,10 +177,6 @@ def read_user_profile(
     )
 
 
-# ============================================================
-# UPDATE PROFILE
-# ============================================================
-
 @router.patch(
     "/{user_id}/profile",
     response_model=UserProfileResponse,
@@ -126,13 +185,11 @@ def update_user_profile(
     user_id: str,
     data: UserProfileUpdate,
 ) -> UserProfileResponse:
-
     existing_user = get_user(
         user_id
     )
 
     if existing_user is None:
-
         raise HTTPException(
             status_code=404,
             detail="User not found.",
@@ -142,34 +199,35 @@ def update_user_profile(
         exclude_none=True
     )
 
-    # --------------------------------------------------------
-    # Normalize simple text fields
-    # --------------------------------------------------------
+    text_fields = {
+        "display_name",
+        "role_title",
+        "organization",
+        "work_email",
+        "phone",
+        "zone_id",
+        "country",
+    }
 
-    if "display_name" in updates:
+    for field_name in text_fields:
+        if field_name in updates:
+            cleaned = _clean_optional_text(
+                updates[field_name]
+            )
 
-        updates["display_name"] = (
-            updates[
-                "display_name"
-            ]
-            .strip()
-        )
+            if cleaned is not None:
+                updates[
+                    field_name
+                ] = cleaned
 
-    if "zone_id" in updates:
-
-        updates["zone_id"] = (
-            updates[
-                "zone_id"
-            ]
-            .strip()
-        )
-
-    # --------------------------------------------------------
-    # Remove duplicate accessibility values
-    # --------------------------------------------------------
+    if "work_email" in updates:
+        updates[
+            "work_email"
+        ] = updates[
+            "work_email"
+        ].lower()
 
     if "accessibility_needs" in updates:
-
         updates[
             "accessibility_needs"
         ] = list(
@@ -180,16 +238,7 @@ def update_user_profile(
             )
         )
 
-    # --------------------------------------------------------
-    # Keep legacy notification field synchronized
-    #
-    # Recipient selection currently supports both:
-    # notification_consent
-    # notifications_enabled
-    # --------------------------------------------------------
-
     if "notification_consent" in updates:
-
         consent = bool(
             updates[
                 "notification_consent"
@@ -205,7 +254,6 @@ def update_user_profile(
         ] = consent
 
     if updates:
-
         update_user(
             user_id,
             updates,
@@ -216,7 +264,6 @@ def update_user_profile(
     )
 
     if updated_user is None:
-
         raise HTTPException(
             status_code=404,
             detail="User not found.",

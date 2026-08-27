@@ -13,6 +13,8 @@ from app.routers.dashboard import router as dashboard_router
 
 from app.routers import users
 
+from app.routers import auth
+
 app = FastAPI(
     title="MONJED API",
     description=(
@@ -61,6 +63,7 @@ app.include_router(accessibility_router)
 app.include_router(test_ui_router)
 app.include_router(dashboard_router)
 app.include_router(users.router)
+app.include_router(auth.router)
 
 # ============================================================
 # ROOT

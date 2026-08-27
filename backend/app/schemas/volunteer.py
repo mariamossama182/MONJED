@@ -3,7 +3,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-
 # ============================================================
 # TYPES
 # ============================================================
@@ -122,3 +121,18 @@ class VolunteerRecord(
 ):
 
     volunteer_id: str
+
+
+# ============================================================
+# UPDATE
+# ============================================================
+
+class VolunteerAvailabilityUpdate(BaseModel):
+    """
+    Frontend-safe volunteer availability update.
+
+    Operational qualifications, responder level, skills,
+    and identity are not modified through this endpoint.
+    """
+
+    available: bool

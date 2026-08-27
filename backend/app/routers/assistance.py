@@ -9,6 +9,7 @@ from app.schemas.assistance import (
 )
 
 from app.schemas.volunteer import (
+    VolunteerAvailabilityUpdate,
     VolunteerInput,
     VolunteerRecord,
 )
@@ -17,6 +18,7 @@ from app.services.assistance_store import (
     create_assistance_request,
     get_request,
     get_pending_requests,
+    get_all_requests,
     assign_request,
     start_request,
     resolve_request,
@@ -24,6 +26,7 @@ from app.services.assistance_store import (
 
 from app.services.volunteer_store import (
     add_volunteer,
+    get_all_volunteers,
     get_available_volunteers,
     get_volunteer,
     set_volunteer_availability,
@@ -97,6 +100,131 @@ def register_volunteer(
         data
     )
 
+
+# ============================================================
+# LIST VOLUNTEERS
+# ============================================================
+
+@router.get(
+    "/volunteers",
+    response_model=list[VolunteerRecord],
+)
+def list_volunteers(
+    available: bool | None = None,
+    zone_id: str | None = None,
+) -> list[VolunteerRecord]:
+    """
+    Return volunteers/responders for the frontend/admin panel.
+
+    Optional query filters:
+    - available=true|false
+    - zone_id=<zone>
+    """
+
+    volunteers = get_all_volunteers()
+
+    if zone_id is not None:
+
+        normalized_zone = zone_id.strip()
+
+        volunteers = [
+            volunteer
+            for volunteer in volunteers
+            if volunteer.zone_id.strip() == normalized_zone
+        ]
+
+    if available is not None:
+
+        volunteers = [
+            volunteer
+            for volunteer in volunteers
+            if volunteer.available == available
+        ]
+
+    return volunteers
+
+
+# ============================================================
+# UPDATE VOLUNTEER AVAILABILITY
+# ============================================================
+
+@router.patch(
+    "/volunteers/{volunteer_id}",
+    response_model=VolunteerRecord,
+)
+def update_volunteer_availability(
+    volunteer_id: str,
+    data: VolunteerAvailabilityUpdate,
+) -> VolunteerRecord:
+    """
+    Update volunteer availability.
+
+    This endpoint does not modify skills, qualifications,
+    responder level, or assignment safety rules.
+    """
+
+    volunteer = get_volunteer(
+        volunteer_id
+    )
+
+    if volunteer is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Volunteer or responder not found.",
+        )
+
+    updated = set_volunteer_availability(
+        volunteer_id=volunteer.volunteer_id,
+        available=data.available,
+    )
+
+    if updated is None:
+
+        raise HTTPException(
+            status_code=500,
+            detail="Volunteer availability could not be updated.",
+        )
+
+    return updated
+
+
+# ============================================================
+# VOLUNTEER INBOX
+# ============================================================
+
+@router.get(
+    "/volunteers/{volunteer_id}/requests",
+    response_model=list[AssistanceRequestRecord],
+)
+def volunteer_requests(
+    volunteer_id: str,
+) -> list[AssistanceRequestRecord]:
+    """
+    Return assistance requests assigned to one volunteer.
+
+    Used by the Volunteer Inbox frontend.
+    """
+
+    volunteer = get_volunteer(
+        volunteer_id
+    )
+
+    if volunteer is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Volunteer or responder not found.",
+        )
+
+    return [
+        request
+        for request in get_all_requests()
+        if (
+            request.assigned_volunteer_id
+            == volunteer.volunteer_id
+        )
+    ]
 
 
 # ============================================================

@@ -1,4 +1,7 @@
-from fastapi import APIRouter
+from fastapi import (
+    APIRouter,
+    HTTPException,
+)
 
 from app.schemas.community_report import (
     CommunityReportInput,
@@ -11,8 +14,11 @@ from app.services.community_report_analyzer import (
 )
 
 from app.services.community_report_store import (
-    save_report,
+    get_all_reports,
     get_recent_reports,
+    resolve_report,
+    save_report,
+    verify_report,
 )
 
 
@@ -85,6 +91,109 @@ def submit_report(
         analysis_source=analysis_source,
     )
 
+# ============================================================
+# LIST REPORTS
+# ============================================================
+
+@router.get(
+    "",
+    response_model=list[CommunityReportRecord],
+)
+def list_reports(
+    zone_id: str | None = None,
+    verified: bool | None = None,
+    resolved: bool | None = None,
+) -> list[CommunityReportRecord]:
+    """
+    Return community reports for the operations frontend.
+
+    Optional filters:
+    - zone_id
+    - verified
+    - resolved
+    """
+
+    reports = get_all_reports()
+
+    if zone_id is not None:
+
+        normalized_zone = zone_id.strip()
+
+        reports = [
+            report
+            for report in reports
+            if report.zone_id.strip() == normalized_zone
+        ]
+
+    if verified is not None:
+
+        reports = [
+            report
+            for report in reports
+            if report.verified == verified
+        ]
+
+    if resolved is not None:
+
+        reports = [
+            report
+            for report in reports
+            if report.resolved == resolved
+        ]
+
+    return reports
+
+
+# ============================================================
+# VERIFY REPORT
+# ============================================================
+
+@router.patch(
+    "/{report_id}/verify",
+    response_model=CommunityReportRecord,
+)
+def verify_community_report(
+    report_id: str,
+) -> CommunityReportRecord:
+
+    report = verify_report(
+        report_id
+    )
+
+    if report is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Community report not found.",
+        )
+
+    return report
+
+
+# ============================================================
+# RESOLVE REPORT
+# ============================================================
+
+@router.patch(
+    "/{report_id}/resolve",
+    response_model=CommunityReportRecord,
+)
+def resolve_community_report(
+    report_id: str,
+) -> CommunityReportRecord:
+
+    report = resolve_report(
+        report_id
+    )
+
+    if report is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Community report not found.",
+        )
+
+    return report
 
 # ============================================================
 # RECENT REPORTS

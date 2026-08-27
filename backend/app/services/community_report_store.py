@@ -83,38 +83,36 @@ def save_report(
 
     record = CommunityReportRecord(
 
-        report_id=str(
-            uuid4()
-        ),
+    report_id=str(
+        uuid4()
+    ),
 
+    zone_id=zone_id,
 
-        zone_id=zone_id,
+    location=report.location.strip(),
 
+    latitude=report.latitude,
 
-        location=report.location.strip(),
+    longitude=report.longitude,
 
+    report_text=report.report_text.strip(),
 
-        latitude=report.latitude,
+    reporter_id=report.reporter_id,
 
+    analysis=analysis,
 
-        longitude=report.longitude,
+    analysis_source=analysis_source,
 
+    verified=False,
 
-        report_text=report.report_text.strip(),
+    resolved=False,
 
+    verified_at=None,
 
-        analysis=analysis,
+    resolved_at=None,
 
-
-        analysis_source=analysis_source,
-
-
-        verified=False,
-
-
-        created_at=now,
-    )
-
+    created_at=now,
+)
 
     _reports.append(
         record
@@ -160,11 +158,112 @@ def get_recent_reports(
 
             report.created_at >= cutoff
 
+            and
+
+            not report.resolved
+
         )
 
     ]
 
+# ============================================================
+# GET ALL REPORTS
+# ============================================================
 
+def get_all_reports():
+    """
+    Return all stored community reports.
+
+    Primarily used by the operations/admin frontend.
+    """
+
+    return list(
+        _reports
+    )
+
+
+# ============================================================
+# GET REPORT
+# ============================================================
+
+def get_report(
+    report_id: str,
+) -> CommunityReportRecord | None:
+
+    report_id = report_id.strip()
+
+    if not report_id:
+        return None
+
+    for report in _reports:
+
+        if report.report_id == report_id:
+            return report
+
+    return None
+
+
+# ============================================================
+# VERIFY REPORT
+# ============================================================
+
+def verify_report(
+    report_id: str,
+) -> CommunityReportRecord | None:
+    """
+    Mark a report as independently verified.
+
+    Verification affects report trust/workflow status only.
+    It does not modify scientific risk.
+    """
+
+    report = get_report(
+        report_id
+    )
+
+    if report is None:
+        return None
+
+    if not report.verified:
+
+        report.verified = True
+
+        report.verified_at = datetime.now(
+            timezone.utc
+        )
+
+    return report
+
+
+# ============================================================
+# RESOLVE REPORT
+# ============================================================
+
+def resolve_report(
+    report_id: str,
+) -> CommunityReportRecord | None:
+    """
+    Close a community report operationally.
+
+    This does not modify historical scientific risk data.
+    """
+
+    report = get_report(
+        report_id
+    )
+
+    if report is None:
+        return None
+
+    if not report.resolved:
+
+        report.resolved = True
+
+        report.resolved_at = datetime.now(
+            timezone.utc
+        )
+
+    return report
 
 # ============================================================
 # CLEAR

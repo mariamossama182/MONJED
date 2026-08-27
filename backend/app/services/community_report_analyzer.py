@@ -447,9 +447,22 @@ def _build_deterministic_fallback(
     # HAZARD
     # ========================================================
 
-    flood_detected = _contains_any(
+    # Rising water is itself an explicit flood signal.
+    # We calculate it before hazard classification so the
+    # fallback does not return hazard_type="unknown" while
+    # simultaneously returning rising_water=True.
+    rising_water_signal = _has_signal(
         text,
-        FLOOD_TERMS,
+        RISING_WATER_TERMS,
+        RISING_WATER_NEGATIONS,
+    )
+
+    flood_detected = (
+        _contains_any(
+            text,
+            FLOOD_TERMS,
+        )
+        or rising_water_signal
     )
 
     earthquake_detected = _contains_any(
@@ -478,11 +491,7 @@ def _build_deterministic_fallback(
     # OPERATIONAL SIGNALS
     # ========================================================
 
-    rising_water = _has_signal(
-        text,
-        RISING_WATER_TERMS,
-        RISING_WATER_NEGATIONS,
-    )
+    rising_water = rising_water_signal
 
     blocked_road = _has_signal(
         text,
