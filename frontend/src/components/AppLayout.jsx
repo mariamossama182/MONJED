@@ -10,6 +10,8 @@ const MEMBER_NAV = [
   { to: "/help", label: "Request help" },
 ];
 
+const AUTH_PATHS = ["/login", "/volunteer", "/admin/login"];
+
 function logoHome(session) {
   if (!session) return "/";
   if (session.role === "admin") return "/admin";
@@ -30,6 +32,8 @@ export default function AppLayout() {
       location.pathname.startsWith("/report") ||
       location.pathname.startsWith("/help") ||
       location.pathname.startsWith("/trends"));
+
+  const hideAuthMenu = !isSignedIn && AUTH_PATHS.includes(location.pathname);
 
   return (
     <div className="min-h-screen bg-night text-bone flex flex-col">
@@ -67,7 +71,7 @@ export default function AppLayout() {
             )}
 
             <div className="justify-self-end flex items-center gap-3">
-              <UserProfileMenu />
+              {!hideAuthMenu && <UserProfileMenu />}
             </div>
           </div>
         </div>
