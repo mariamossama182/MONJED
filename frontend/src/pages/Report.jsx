@@ -11,7 +11,6 @@ import {
   Shield,
   Radio,
   ArrowRight,
-  Info,
 } from "lucide-react";
 import { analyzeCommunityReport, submitCommunityReport, ApiError } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
@@ -184,7 +183,7 @@ const activeTypes = TYPES.filter((t) => types.includes(t.key));
 
             <label className="block">
               <span className="block text-xs font-mono tracking-wide text-slate mb-1.5">
-                Notes (optional — analyzed live if 3+ characters)
+                Notes (optional)
               </span>
               <textarea
                 value={notes}
@@ -289,19 +288,11 @@ const activeTypes = TYPES.filter((t) => types.includes(t.key));
                 );
               })}
             </div>
-            <div className="mt-5 pt-4 border-t border-line space-y-3 text-sm text-slate">
+            <div className="mt-5 pt-4 border-t border-line text-sm text-slate">
               <p className="inline-flex items-start gap-2">
                 <Shield size={15} className="text-teal mt-0.5 shrink-0" />
                 One report = low confidence. Several similar reports in the same
                 zone raise priority.
-              </p>
-              <p className="inline-flex items-start gap-2">
-                <Info size={15} className="text-amber mt-0.5 shrink-0" />
-                Notes call{" "}
-                <span className="font-mono text-mist">
-                  POST /api/community-reports/analyze
-                </span>
-                .
               </p>
             </div>
           </div>
