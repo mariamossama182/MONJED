@@ -437,7 +437,7 @@ export default function UserProfileMenu() {
         >
           <Avatar session={session} size={30} />
           <span className="hidden sm:block text-sm font-medium max-w-[120px] truncate">
-            {session?.name || "Account"}
+            {session?.name || "Sign in"}
           </span>
           <ChevronDown size={14} className="text-slate" />
         </button>
