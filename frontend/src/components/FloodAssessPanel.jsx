@@ -106,9 +106,6 @@ export default function FloodAssessPanel({
         Boolean(row?.error))
   ).length;
 
-  const hasExplicitDeliveryOutcome =
-    confirmedSentCount + confirmedFailedCount > 0;
-
   return (
     <section className="rounded-xl border border-line bg-panel p-6 shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-line pb-4">
@@ -310,43 +307,47 @@ export default function FloodAssessPanel({
                   >
                     <div>
                       <p className="text-sm font-medium text-bone">
-                        SMS alert dispatch processed
+                        SMS alert dispatch
                       </p>
                       <p className="mt-1 text-xs text-slate">
-                        Delivery was processed for eligible recipients. Recipient
-                        phone numbers and message contents are hidden for privacy.
+                        {confirmedSentCount} sent
+                        {confirmedFailedCount > 0
+                          ? ` · ${confirmedFailedCount} failed`
+                          : ""}{" "}
+                        · {smsRows.length} recipient
+                        {smsRows.length === 1 ? "" : "s"}
                       </p>
                     </div>
-
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div className="rounded-md border border-line px-3 py-2">
-                        <p className="font-mono text-[10px] tracking-[0.12em] text-slate">
-                          RECIPIENTS TARGETED
-                        </p>
-                        <p className="mt-1 font-display text-lg font-bold text-bone">
-                          {smsRows.length}
-                        </p>
-                      </div>
-
-                      <div className="rounded-md border border-line px-3 py-2">
-                        <p className="font-mono text-[10px] tracking-[0.12em] text-slate">
-                          DELIVERY STATUS
-                        </p>
-
-                        {hasExplicitDeliveryOutcome ? (
-                          <p className="mt-1 text-sm text-mist">
-                            {confirmedSentCount} sent
-                            {confirmedFailedCount > 0
-                              ? ` · ${confirmedFailedCount} failed`
-                              : ""}
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-sm text-mist">
-                            Provider response received
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                    <ul className="space-y-1.5">
+                      {smsRows.map((row, i) => {
+                        const phone =
+                          row?.phone ||
+                          row?.result?.phone ||
+                          "—";
+                        const masked =
+                          phone.length > 4
+                            ? `···${phone.slice(-4)}`
+                            : phone;
+                        const ok =
+                          row?.result?.success === true ||
+                          row?.success === true;
+                        const err =
+                          row?.result?.error ||
+                          row?.error ||
+                          row?.result?.message;
+                        return (
+                          <li
+                            key={`${phone}-${i}`}
+                            className="text-xs font-mono text-mist leading-relaxed flex justify-between gap-2"
+                          >
+                            <span>{masked}</span>
+                            <span className={ok ? "text-teal" : "text-crimson"}>
+                              {ok ? "sent" : err || "failed"}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 )}
 

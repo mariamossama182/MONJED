@@ -23,7 +23,7 @@ import urllib.error
 
 
 
-from backend.app.services.sms.config import (
+from app.services.sms.config import (
     AFRICAS_TALKING_USERNAME,
     AFRICAS_TALKING_API_KEY,
     AFRICAS_TALKING_SENDER_ID,

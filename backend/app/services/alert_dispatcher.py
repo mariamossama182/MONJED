@@ -30,12 +30,12 @@ from AI.ai_alert.alert_formatter import (
 )
 
 
-from backend.app.services.sms.sms_service import (
+from app.services.sms.sms_service import (
     send_alert_sms,
 )
 
 
-from backend.app.services.voice.voice_service import (
+from app.services.voice.voice_service import (
     send_voice_alert,
 )
 

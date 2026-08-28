@@ -22,7 +22,7 @@ IMPORTANT:
 # ============================================================
 # SUPPORTED LANGUAGES
 # ============================================================
-from backend.app.services.sms.action_localizer import (
+from app.services.sms.action_localizer import (
     localize_action,
 )
 

@@ -78,8 +78,8 @@ from app.services.alert_dispatcher import (
     dispatch_alert,
 )
 
-from database.users_repository import (
-    get_alert_recipients_by_zone,
+from app.services.sms.recipients import (
+    get_sms_recipients_for_zone,
 )
 
 from database.alerts_repository import (
@@ -397,22 +397,9 @@ def add_ai_alert(
         False,
     ):
 
-        try:
-
-            sms_recipients = (
-                get_alert_recipients_by_zone(
-                    assessment.risk.zone_id
-                )
-            )
-
-        except Exception as exc:
-
-            print(
-                "MONJED recipient selection warning: "
-                f"{type(exc).__name__}: {exc}"
-            )
-
-            sms_recipients = []
+        sms_recipients = get_sms_recipients_for_zone(
+            assessment.risk.zone_id
+        )
 
     # ========================================================
     # 7. DELIVERY

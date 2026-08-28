@@ -36,12 +36,12 @@ IMPORTANT:
 """
 
 
-from backend.app.services.sms.africas_talking import (
+from app.services.sms.africas_talking import (
     send_sms as send_provider_sms,
 )
 
 
-from backend.app.services.sms.sms_formatter import (
+from app.services.sms.sms_formatter import (
     format_sms_alert,
 )
 
