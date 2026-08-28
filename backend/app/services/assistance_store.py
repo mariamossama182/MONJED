@@ -12,10 +12,82 @@ from app.schemas.assistance import (
 
 
 # ============================================================
-# TEMPORARY IN-MEMORY STORE
+# IN-MEMORY CACHE (+ optional Mongo persistence)
 # ============================================================
 
 _requests: list[AssistanceRequestRecord] = []
+
+
+def _mongo_enabled() -> bool:
+    try:
+        from database.connection import get_database
+
+        get_database().command("ping")
+        return True
+    except Exception:
+        return False
+
+
+def _record_to_doc(
+    request: AssistanceRequestRecord,
+) -> dict:
+    return request.model_dump(mode="json")
+
+
+def _doc_to_record(
+    doc: dict,
+) -> AssistanceRequestRecord:
+    cleaned = dict(doc)
+    cleaned.pop("_id", None)
+    return AssistanceRequestRecord(**cleaned)
+
+
+def _mongo_insert(
+    request: AssistanceRequestRecord,
+) -> None:
+    if not _mongo_enabled():
+        return
+
+    from database.assistance_repository import (
+        create_assistance_request as mongo_create,
+    )
+
+    mongo_create(_record_to_doc(request))
+
+
+def _mongo_upsert(
+    request: AssistanceRequestRecord,
+) -> None:
+    if not _mongo_enabled():
+        return
+
+    from database.assistance_repository import (
+        get_assistance_request as mongo_get,
+        create_assistance_request as mongo_create,
+        update_assistance_request as mongo_update,
+    )
+
+    doc = _record_to_doc(request)
+
+    if mongo_get(request.request_id):
+        mongo_update(request.request_id, doc)
+    else:
+        mongo_create(doc)
+
+
+def _load_requests_from_mongo() -> list[AssistanceRequestRecord]:
+    if not _mongo_enabled():
+        return list(_requests)
+
+    from database.assistance_repository import (
+        get_all_assistance_requests,
+    )
+
+    docs = get_all_assistance_requests()
+    records = [_doc_to_record(doc) for doc in docs]
+    _requests.clear()
+    _requests.extend(records)
+    return list(records)
 
 
 
@@ -152,7 +224,9 @@ def create_assistance_request(
         source_report_ids=[],
 
 
-        accessibility_needs=[],
+        accessibility_needs=_normalize_accessibility_needs(
+            data.accessibility_needs
+        ),
 
 
         requires_trained_responder=(
@@ -175,6 +249,10 @@ def create_assistance_request(
         request
     )
 
+    try:
+        _mongo_insert(request)
+    except Exception:
+        pass
 
     return request
 
@@ -406,6 +484,10 @@ def create_decision_assistance_request(
         request
     )
 
+    try:
+        _mongo_insert(request)
+    except Exception:
+        pass
 
     return request
 
@@ -432,6 +514,19 @@ def get_request(
         if request.request_id == request_id:
             return request
 
+    if _mongo_enabled():
+        try:
+            from database.assistance_repository import (
+                get_assistance_request as mongo_get,
+            )
+
+            doc = mongo_get(request_id)
+            if doc is not None:
+                record = _doc_to_record(doc)
+                _requests.append(record)
+                return record
+        except Exception:
+            pass
 
     return None
 
@@ -445,7 +540,7 @@ def get_pending_requests():
 
     return [
         request
-        for request in _requests
+        for request in get_all_requests()
         if request.status == "pending"
     ]
 
@@ -457,9 +552,10 @@ def get_pending_requests():
 
 def get_all_requests():
 
-    return list(
-        _requests
-    )
+    try:
+        return _load_requests_from_mongo()
+    except Exception:
+        return list(_requests)
 
 
 
@@ -502,6 +598,10 @@ def assign_request(
         timezone.utc
     )
 
+    try:
+        _mongo_upsert(request)
+    except Exception:
+        pass
 
     return request
 
@@ -539,6 +639,10 @@ def start_request(
         timezone.utc
     )
 
+    try:
+        _mongo_upsert(request)
+    except Exception:
+        pass
 
     return request
 
@@ -572,6 +676,10 @@ def resolve_request(
         timezone.utc
     )
 
+    try:
+        _mongo_upsert(request)
+    except Exception:
+        pass
 
     return request
 

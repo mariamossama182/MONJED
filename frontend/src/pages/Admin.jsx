@@ -108,17 +108,28 @@ export default function AdminPage() {
   const loadLive = useCallback(async () => {
     setLoadError("");
     try {
-      const [ok, reqs, vols, community, platformUsers] = await Promise.all([
+      const [ok, helpResult, vols, community, platformUsers] = await Promise.all([
         healthCheck()
           .then(() => true)
           .catch(() => false),
-        listAssistanceRequests().catch(() => []),
+        listAssistanceRequests()
+          .then((rows) => ({ rows, error: "" }))
+          .catch((err) => ({
+            rows: [],
+            error:
+              err instanceof ApiError
+                ? `Help queue: ${err.message}`
+                : "Help queue: could not load assistance requests.",
+          })),
         listVolunteersApi().catch(() => []),
         listCommunityReports().catch(() => null),
         listPlatformUsers().catch(() => []),
       ]);
       setApiStatus(ok ? "ok" : "down");
-      setHelp(Array.isArray(reqs) ? reqs : []);
+      setHelp(Array.isArray(helpResult.rows) ? helpResult.rows : []);
+      if (helpResult.error) {
+        setLoadError(helpResult.error);
+      }
       setVolunteers(Array.isArray(vols) ? vols : []);
       setUsers(Array.isArray(platformUsers) ? platformUsers : []);
       if (Array.isArray(community)) {
@@ -894,6 +905,12 @@ export default function AdminPage() {
                     <p className="font-mono uppercase">
                       {h.priority} · {h.hazard}
                     </p>
+                    {Array.isArray(h.accessibility_needs) &&
+                      h.accessibility_needs.length > 0 && (
+                        <p className="font-mono text-teal">
+                          Accessibility · {h.accessibility_needs.join(", ")}
+                        </p>
+                      )}
                     {assignee && (
                       <p className="font-mono text-teal">
                         Assigned · {assignee.name}

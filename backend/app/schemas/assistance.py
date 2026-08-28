@@ -108,6 +108,10 @@ class AssistanceRequestInput(BaseModel):
         max_length=500,
     )
 
+    accessibility_needs: list[AccessibilityNeed] = Field(
+        default_factory=list,
+    )
+
 
 
 # ============================================================

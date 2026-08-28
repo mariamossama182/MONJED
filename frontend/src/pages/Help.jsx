@@ -11,9 +11,46 @@ const NEEDS = [
   { id: "mobility_assistance", label: "Mobility assistance", api: "mobility_assistance" },
 ];
 
+/** Most specific type wins for volunteer matching when several are selected. */
+const NEED_PRIORITY = ["mobility_assistance", "transportation", "other"];
+
+function toggleItem(current, id) {
+  if (current.includes(id)) {
+    const next = current.filter((x) => x !== id);
+    return next.length ? next : current;
+  }
+  return [...current, id];
+}
+
+function primaryRequestType(selectedIds) {
+  const apis = selectedIds
+    .map((id) => NEEDS.find((n) => n.id === id)?.api)
+    .filter(Boolean);
+  for (const api of NEED_PRIORITY) {
+    if (apis.includes(api)) return api;
+  }
+  return "other";
+}
+
+function selectedNeedLabels(selectedIds) {
+  return selectedIds
+    .map((id) => NEEDS.find((n) => n.id === id)?.label)
+    .filter(Boolean);
+}
+
+const ACCESSIBILITY_OPTIONS = [
+  { id: "mobility", label: "Mobility", hint: "Wheelchair, walker, or difficulty moving" },
+  { id: "visual", label: "Visual", hint: "Blind or low vision" },
+  { id: "hearing", label: "Hearing", hint: "Deaf or hard of hearing" },
+  { id: "cognitive", label: "Cognitive", hint: "Clear plain-language instructions" },
+];
+
 export default function HelpPage() {
   const { session } = useAuth();
-  const [need, setNeed] = useState("other");
+  const [needs, setNeeds] = useState(["other"]);
+  const [accessibilityNeeds, setAccessibilityNeeds] = useState(
+    () => session?.accessibility_needs || []
+  );
   const [location, setLocation] = useState(() => {
     if (!session) return "";
     return [session.zone, session.country].filter(Boolean).join(", ");
@@ -30,17 +67,20 @@ export default function HelpPage() {
     setError("");
     setBusy(true);
     const zone_id = session?.zone_id || session?.countryCode || "KE";
-    const selected = NEEDS.find((n) => n.id === need) || NEEDS[0];
+    const labels = selectedNeedLabels(needs);
+    const needsSummary = labels.join(", ");
+    const request_type = primaryRequestType(needs);
     try {
       const record = await createAssistanceRequest({
         zone_id,
         location: location.trim() || zone_id,
         hazard: "flood",
-        request_type: selected.api,
+        request_type,
         priority: "high",
         description:
           details.trim() ||
-          `${selected.label}. Phone: ${phone.trim() || "n/a"}. People: ${people}.`,
+          `${needsSummary}. Phone: ${phone.trim() || "n/a"}. People: ${people}.`,
+        accessibility_needs: accessibilityNeeds,
       });
       setSaved(record);
     } catch (err) {
@@ -76,26 +116,73 @@ export default function HelpPage() {
           </div>
           <p className="mt-4 text-sm text-mist">{saved.description}</p>
           <p className="mt-2 text-xs text-slate">{saved.location} · zone {saved.zone_id}</p>
+          {Array.isArray(saved.accessibility_needs) && saved.accessibility_needs.length > 0 && (
+            <p className="mt-2 text-xs text-slate font-mono">
+              Accessibility: {saved.accessibility_needs.join(", ")}
+            </p>
+          )}
           <Link to="/map" className="mt-6 inline-flex items-center gap-1.5 text-sm text-amber hover:underline">
             Back to map <ArrowRight size={14} />
           </Link>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="mt-8 space-y-5">
-          <div className="flex flex-wrap gap-2">
-            {NEEDS.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => setNeed(n.id)}
-                className={`rounded-md border px-3 py-2 text-sm ${
-                  need === n.id ? "border-amber/50 bg-amber/10" : "border-line"
-                }`}
-              >
-                {n.label}
-              </button>
-            ))}
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.14em] text-slate mb-3">
+              WHAT DO YOU NEED? · pick one or more
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {NEEDS.map((n) => {
+                const on = needs.includes(n.id);
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => setNeeds((prev) => toggleItem(prev, n.id))}
+                    className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                      on ? "border-amber/50 bg-amber/10" : "border-line hover:border-mist/30"
+                    }`}
+                  >
+                    {n.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.14em] text-slate mb-1">
+              DISABILITIES / ACCESSIBILITY · optional, pick any that apply
+            </p>
+            <p className="text-xs text-muted mb-3">
+              Helps responders prepare the right support. Saved with your request for admin and volunteers.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {ACCESSIBILITY_OPTIONS.map((opt) => {
+                const on = accessibilityNeeds.includes(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() =>
+                      setAccessibilityNeeds((prev) => toggleItem(prev, opt.id))
+                    }
+                    className={`rounded-lg border px-3.5 py-3 text-left transition-colors ${
+                      on
+                        ? "border-teal/50 bg-teal/10"
+                        : "border-line bg-panel/40 hover:border-mist/30"
+                    }`}
+                  >
+                    <span className="font-mono text-[11px] tracking-wide">{opt.label}</span>
+                    <span className="block text-[11px] text-slate mt-1 leading-snug">
+                      {opt.hint}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <TextField
             label="Where are you"
             icon={MapPin}
