@@ -11,6 +11,8 @@ import {
   MessageSquare,
   LayoutDashboard,
   Settings2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useAuth } from "../lib/auth.jsx";
 import {
@@ -50,53 +52,85 @@ function phoneFromDescription(description) {
   return m ? m[1].trim() : "";
 }
 
+function resolveRequesterPhone(request) {
+  return request?.requester_phone || phoneFromDescription(request?.description);
+}
+
 function normalizePhone(raw) {
-  const digits = String(raw || "").replace(/[^\d+]/g, "");
-  if (!digits) return "";
-  const wa = digits.replace(/\D/g, "");
-  return { display: digits, tel: digits, wa };
+  const cleaned = String(raw || "").trim();
+  if (!cleaned || /^n\/a$/i.test(cleaned)) return null;
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  const tel = cleaned.startsWith("+") ? cleaned.replace(/\s/g, "") : `+${digits}`;
+  return { display: tel, tel, wa: digits };
 }
 
 function ContactActions({ phone, name }) {
+  const [copied, setCopied] = useState(false);
   const n = normalizePhone(phone);
+
   if (!n) {
     return (
       <p className="text-xs text-slate rounded-md border border-line bg-raised/40 px-3 py-2">
-        No callback number on this request — use location details, or ask ops to
-        update the record.
+        No phone number on this request. Check the notes or ask ops for a callback
+        number.
       </p>
     );
   }
 
-  const smsBody = encodeURIComponent(
+  const message = encodeURIComponent(
     `Hello, this is a MONJED volunteer following up on your help request${
       name ? ` near ${name}` : ""
     }.`
   );
 
+  async function copyPhone() {
+    try {
+      await navigator.clipboard.writeText(n.display);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
-    <div className="flex flex-wrap gap-2">
-      <a
-        href={`tel:${n.tel}`}
-        className="inline-flex items-center gap-1.5 rounded-md bg-amber px-3.5 py-2 text-sm font-semibold text-ink hover:bg-amber-bright transition-colors"
-      >
-        <Phone size={14} /> Call
-      </a>
-      <a
-        href={`sms:${n.tel}?body=${smsBody}`}
-        className="inline-flex items-center gap-1.5 rounded-md border border-line px-3.5 py-2 text-sm font-semibold hover:border-amber/40 transition-colors"
-      >
-        <MessageSquare size={14} /> SMS
-      </a>
-      <a
-        href={`https://wa.me/${n.wa}?text=${smsBody}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1.5 rounded-md border border-teal/40 px-3.5 py-2 text-sm font-semibold text-teal hover:bg-teal/10 transition-colors"
-      >
-        WhatsApp
-      </a>
-      <span className="self-center font-mono text-[11px] text-mist">{n.display}</span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-night/30 px-3 py-2.5">
+        <Phone size={15} className="text-amber shrink-0" />
+        <span className="font-mono text-sm text-bone">{n.display}</span>
+        <button
+          type="button"
+          onClick={copyPhone}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-xs font-mono text-slate hover:border-amber/40 hover:text-amber transition-colors"
+        >
+          {copied ? <Check size={12} className="text-teal" /> : <Copy size={12} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={`tel:${n.tel}`}
+          className="inline-flex items-center gap-1.5 rounded-md bg-amber px-3.5 py-2 text-sm font-semibold text-ink hover:bg-amber-bright transition-colors"
+        >
+          <Phone size={14} /> Call
+        </a>
+        <a
+          href={`https://wa.me/${n.wa}?text=${message}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-teal/40 bg-teal/10 px-3.5 py-2 text-sm font-semibold text-teal hover:bg-teal/20 transition-colors"
+        >
+          <MessageSquare size={14} /> WhatsApp
+        </a>
+        <a
+          href={`sms:${n.tel}?body=${message}`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3.5 py-2 text-sm font-semibold hover:border-amber/40 transition-colors"
+        >
+          SMS
+        </a>
+      </div>
     </div>
   );
 }
@@ -421,7 +455,7 @@ export default function VolunteerDashboardPage() {
 
             {visible.map((r) => {
               const active = isActiveStatus(r.status);
-              const phone = phoneFromDescription(r.description);
+              const phone = resolveRequesterPhone(r);
               return (
                 <article
                   key={r.request_id}

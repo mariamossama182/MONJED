@@ -112,6 +112,13 @@ class AssistanceRequestInput(BaseModel):
         default_factory=list,
     )
 
+    requester_phone: str | None = Field(
+        default=None,
+        min_length=7,
+        max_length=20,
+        description="Callback number for the volunteer or ops team.",
+    )
+
 
 
 # ============================================================
@@ -148,6 +155,8 @@ class AssistanceRequestRecord(BaseModel):
     priority: RequestPriority
 
     description: str
+
+    requester_phone: str | None = None
 
 
 

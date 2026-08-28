@@ -205,6 +205,12 @@ def create_assistance_request(
             data.description
         ),
 
+        requester_phone=(
+            data.requester_phone.strip()
+            if data.requester_phone
+            else None
+        ),
+
 
         status="pending",
 
@@ -441,6 +447,8 @@ def create_decision_assistance_request(
         description=_normalize_description(
             description
         ),
+
+        requester_phone=None,
 
 
         status="pending",

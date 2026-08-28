@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MapPin, Phone, ArrowRight, CheckCircle2 } from "lucide-react";
-import { createAssistanceRequest, ApiError } from "../lib/api.js";
+import { createAssistanceRequest, ApiError, toE164 } from "../lib/api.js";
 import { useAuth } from "../lib/auth.jsx";
 import TextField from "../components/ui/TextField.jsx";
 
@@ -70,6 +70,14 @@ export default function HelpPage() {
     const labels = selectedNeedLabels(needs);
     const needsSummary = labels.join(", ");
     const request_type = primaryRequestType(needs);
+    const phoneRaw = phone.trim();
+    const requester_phone = toE164(phoneRaw) || (phoneRaw.length >= 7 ? phoneRaw : null);
+    if (!requester_phone) {
+      setError("Enter a valid phone number with country code (e.g. +2547…).");
+      setBusy(false);
+      return;
+    }
+    const detailText = details.trim();
     try {
       const record = await createAssistanceRequest({
         zone_id,
@@ -77,9 +85,10 @@ export default function HelpPage() {
         hazard: "flood",
         request_type,
         priority: "high",
-        description:
-          details.trim() ||
-          `${needsSummary}. Phone: ${phone.trim() || "n/a"}. People: ${people}.`,
+        requester_phone,
+        description: detailText
+          ? `${needsSummary}. ${detailText}`
+          : `${needsSummary}. People: ${people}.`,
         accessibility_needs: accessibilityNeeds,
       });
       setSaved(record);
