@@ -21,6 +21,7 @@ function logoHome(session) {
 export default function AppLayout() {
   const { session, isSignedIn } = useAuth();
   const location = useLocation();
+
   const showMemberNav =
     isSignedIn &&
     (session?.role === "user" ||
@@ -66,7 +67,7 @@ export default function AppLayout() {
             )}
 
             <div className="justify-self-end flex items-center gap-3">
-              {isSignedIn ? <UserProfileMenu /> : null}
+              <UserProfileMenu />
             </div>
           </div>
         </div>

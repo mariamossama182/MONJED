@@ -88,12 +88,33 @@ export default function FloodAssessPanel({
     pipelineResult?.sms ??
     pipelineResult?.ai_alert?.sms;
 
+  // Presentation-only delivery summary. Backend/API behavior is unchanged.
+  // Sensitive recipient and provider details are intentionally not rendered.
+  const smsRows = Array.isArray(sms) ? sms : [];
+
+  const isConfirmedSent = (row) =>
+    row?.result?.success === true || row?.success === true;
+
+  const confirmedSentCount = smsRows.filter(isConfirmedSent).length;
+
+  const confirmedFailedCount = smsRows.filter(
+    (row) =>
+      !isConfirmedSent(row) &&
+      (row?.result?.success === false ||
+        row?.success === false ||
+        Boolean(row?.result?.error) ||
+        Boolean(row?.error))
+  ).length;
+
+  const hasExplicitDeliveryOutcome =
+    confirmedSentCount + confirmedFailedCount > 0;
+
   return (
     <section className="rounded-xl border border-line bg-panel p-6 shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-line pb-4">
         <div>
           <p className="font-mono text-[10px] tracking-[0.16em] text-amber">
-            LIVE ENGINE · POST /risk/flood
+            LIVE FLOOD RISK ENGINE
           </p>
           <h2 className="mt-1 font-display text-lg font-bold text-bone flex items-center gap-2">
             <Waves size={18} className="text-amber" />
@@ -103,9 +124,9 @@ export default function FloodAssessPanel({
       </div>
       <p className="mt-3 text-xs text-slate leading-relaxed">
         Rule-based flood engine only — never blended with earthquake. Send
-        rainfall for a zone; get score, level, confidence, and reasons.
+        rainfall for a zone to assess risk level, score, confidence, and reasons.
         {allowPipeline
-          ? " Ops can also run the full alert pipeline (SMS path when configured)."
+          ? " Operations can also run the full alert pipeline for active notifications."
           : ""}
       </p>
 
@@ -168,7 +189,7 @@ export default function FloodAssessPanel({
             {pipelineLoading && <Loader2 size={16} className="animate-spin" />}
             {pipelineLoading
               ? "Running pipeline…"
-              : "Run full pipeline (alert path)"}
+              : "Run full alert pipeline"}
           </button>
         )}
       </form>
@@ -210,16 +231,18 @@ export default function FloodAssessPanel({
       )}
 
       {allowPipeline && pipelineResult && (
-        <div className="mt-5 rounded-lg border border-amber/30 bg-amber/5 p-4 space-y-3">
+        <div className="mt-5 rounded-lg border border-amber/30 bg-amber/5 p-4 space-y-4">
           <p className="font-mono text-[10px] tracking-[0.14em] text-amber">
-            PIPELINE · POST /pipeline/flood
+            ALERT PIPELINE RESULT
           </p>
+
           {riskLevel && (
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-slate">RISK LEVEL</span>
               <RiskBadge level={riskLevel} />
             </div>
           )}
+
           {pipelineResult?.risk?.risk_score != null && (
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-slate">SCORE</span>
@@ -228,62 +251,126 @@ export default function FloodAssessPanel({
               </span>
             </div>
           )}
+
           {currentAction && (
             <div>
-              <span className="font-mono text-xs text-slate">CURRENT ACTION</span>
+              <span className="font-mono text-xs text-slate">
+                RECOMMENDED ACTION
+              </span>
               <p className="mt-1 text-sm text-bone leading-relaxed">
                 {currentAction}
               </p>
             </div>
           )}
+
           {(delivery || sms) && (
-            <div className="pt-2 border-t border-line space-y-2">
-              <span className="font-mono text-xs text-slate">DELIVERY / SMS</span>
-              {delivery?.notification_required != null && (
-                <p className="text-xs text-mist">
-                  notification_required:{" "}
-                  {String(delivery.notification_required)}
-                </p>
+            <div className="pt-3 border-t border-line space-y-3">
+              <span className="font-mono text-xs text-slate">
+                ALERT DELIVERY
+              </span>
+
+              {delivery?.notification_required === false && (
+                <div
+                  className="rounded-md border border-line bg-ink/20 p-3"
+                  role="status"
+                >
+                  <p className="text-sm text-mist">
+                    No SMS notification is required for this assessment.
+                  </p>
+                  <p className="mt-1 text-xs text-slate">
+                    The assessment remains available on the operations dashboard.
+                  </p>
+                </div>
               )}
-              {Array.isArray(sms) && sms.length === 0 && (
-                <p className="text-xs text-slate">
-                  No SMS recipients for this zone (need users with phone +
-                  consent + matching zone_id), or notification was not
-                  required.
-                </p>
-              )}
-              {Array.isArray(sms) && sms.length > 0 && (
-                <ul className="space-y-1.5">
-                  {sms.map((row, i) => {
-                    const phone = row?.phone || row?.result?.phone || "—";
-                    const ok =
-                      row?.result?.success === true ||
-                      row?.success === true;
-                    const err =
-                      row?.result?.error ||
-                      row?.error ||
-                      row?.result?.message;
-                    return (
-                      <li
-                        key={`${phone}-${i}`}
-                        className="text-xs text-mist font-mono leading-relaxed"
-                      >
-                        {phone}{" "}
-                        <span className={ok ? "text-teal" : "text-crimson"}>
-                          {ok ? "sent" : err || "failed"}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {sms && !Array.isArray(sms) && (
-                <p className="text-xs text-mist font-mono break-all">
-                  {typeof sms === "string" ? sms : JSON.stringify(sms)}
-                </p>
-              )}
+
+              {delivery?.notification_required === true &&
+                Array.isArray(sms) &&
+                smsRows.length === 0 && (
+                  <div
+                    className="rounded-md border border-amber/30 bg-amber/5 p-3"
+                    role="status"
+                  >
+                    <p className="text-sm text-mist">
+                      An active alert is required, but no eligible SMS recipients
+                      were available for this zone.
+                    </p>
+                    <p className="mt-1 text-xs text-slate">
+                      Recipient eligibility depends on zone match, a valid phone
+                      number, and notification consent.
+                    </p>
+                  </div>
+                )}
+
+              {delivery?.notification_required === true &&
+                Array.isArray(sms) &&
+                smsRows.length > 0 && (
+                  <div
+                    className="rounded-md border border-line bg-ink/20 p-3 space-y-3"
+                    role="status"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-bone">
+                        SMS alert dispatch processed
+                      </p>
+                      <p className="mt-1 text-xs text-slate">
+                        Delivery was processed for eligible recipients. Recipient
+                        phone numbers and message contents are hidden for privacy.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div className="rounded-md border border-line px-3 py-2">
+                        <p className="font-mono text-[10px] tracking-[0.12em] text-slate">
+                          RECIPIENTS TARGETED
+                        </p>
+                        <p className="mt-1 font-display text-lg font-bold text-bone">
+                          {smsRows.length}
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-line px-3 py-2">
+                        <p className="font-mono text-[10px] tracking-[0.12em] text-slate">
+                          DELIVERY STATUS
+                        </p>
+
+                        {hasExplicitDeliveryOutcome ? (
+                          <p className="mt-1 text-sm text-mist">
+                            {confirmedSentCount} sent
+                            {confirmedFailedCount > 0
+                              ? ` · ${confirmedFailedCount} failed`
+                              : ""}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-sm text-mist">
+                            Provider response received
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {delivery?.notification_required === true &&
+                sms &&
+                !Array.isArray(sms) && (
+                  <div
+                    className="rounded-md border border-line bg-ink/20 p-3"
+                    role="status"
+                  >
+                    <p className="text-sm font-medium text-bone">
+                      SMS delivery processed
+                    </p>
+                    <p className="mt-1 text-xs text-slate">
+                      The notification service returned a delivery response.
+                      Sensitive provider details are not displayed.
+                    </p>
+                  </div>
+                )}
+
               {delivery?.dashboard != null && (
-                <p className="text-xs text-mist">Dashboard dispatch recorded.</p>
+                <p className="text-xs text-mist">
+                  Assessment saved to the operations dashboard.
+                </p>
               )}
             </div>
           )}

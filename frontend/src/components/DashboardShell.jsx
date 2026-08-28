@@ -331,7 +331,8 @@ export default function DashboardShell({
   badge,
   children,
 }) {
-  const { session } = useAuth();
+  const { session, logout } = useAuth();
+  const navigate = useNavigate();
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
@@ -429,7 +430,7 @@ export default function DashboardShell({
               >
                 <Avatar session={session} size={30} />
                 <span className="hidden sm:block text-sm font-medium max-w-[120px] truncate">
-                  {session?.name}
+                  {session?.name || "Sign in"}
                 </span>
                 <ChevronDown size={14} className="text-slate" />
               </button>
@@ -438,17 +439,47 @@ export default function DashboardShell({
                   id={userMenuId}
                   className="absolute right-0 mt-2 w-52 rounded-xl border border-line bg-panel shadow-lg py-1.5 z-40"
                 >
-                  <button
-                    type="button"
-                    className="w-full px-3.5 py-2.5 text-left text-sm hover:bg-raised flex items-center gap-2"
-                    onClick={() => {
-                      setUserMenu(false);
-                      setProfileOpen(true);
-                    }}
-                  >
-                    <UserRound size={15} className="text-amber" />
-                    Update profile
-                  </button>
+                  {session ? (
+                    <>
+                      <button
+                        type="button"
+                        className="w-full px-3.5 py-2.5 text-left text-sm hover:bg-raised flex items-center gap-2"
+                        onClick={() => {
+                          setUserMenu(false);
+                          setProfileOpen(true);
+                        }}
+                      >
+                        <UserRound size={15} className="text-amber" />
+                        Update profile
+                      </button>
+
+                      <button
+                        type="button"
+                        className="w-full px-3.5 py-2.5 text-left text-sm text-crimson hover:bg-raised flex items-center gap-2 border-t border-line"
+                        onClick={() => {
+                          setUserMenu(false);
+                          setProfileOpen(false);
+                          logout();
+                          navigate("/");
+                        }}
+                      >
+                        <LogOut size={15} />
+                        Sign out
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="w-full px-3.5 py-2.5 text-left text-sm hover:bg-raised flex items-center gap-2"
+                      onClick={() => {
+                        setUserMenu(false);
+                        navigate("/login");
+                      }}
+                    >
+                      <UserRound size={15} className="text-amber" />
+                      Sign in
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -458,7 +489,7 @@ export default function DashboardShell({
 
       <div className="flex flex-1 min-h-0">
         {/* Desktop sidebar */}
-        <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-line bg-panel/40">
+        <aside className="hidden lg:sticky lg:top-14 lg:flex h-[calc(100vh-3.5rem)] w-60 shrink-0 self-start flex-col overflow-y-auto border-r border-line bg-panel/40">
           {sidebar}
         </aside>
 

@@ -900,6 +900,48 @@ It does NOT represent:
 - scientific hazard confidence,
 - risk probability.
 
+============================================================
+LANGUAGE AND SEMANTIC INTERPRETATION
+============================================================
+
+- The report may be written in any supported language or local dialect,
+  including colloquial Arabic, Egyptian Arabic, Swahili, French,
+  or informal English.
+
+- Interpret the SEMANTIC MEANING of the report, not only exact keywords
+  or formal wording.
+
+- Colloquial wording counts as explicit evidence when its meaning is
+  unambiguous.
+
+- Internally understand or translate the user's wording before mapping it
+  to the structured fields.
+
+- Do NOT require the user to use formal phrases such as
+  "transportation is needed".
+
+Examples of equivalent explicit transportation requests:
+
+"I need a car."
+"I need a ride."
+"محتاجة عربية"
+"محتاج عربية"
+"عايزين عربية تنقلنا"
+"محتاجين مواصلات"
+
+All of the examples above clearly indicate:
+
+transportation_needed = true
+help_needed = true
+
+They do NOT by themselves establish:
+
+hazard_type = flood
+hazard_type = earthquake
+people_trapped = true
+mobility_assistance_needed = true
+
+Do not infer a hazard merely from an assistance request.
 
 ============================================================
 OUTPUT
