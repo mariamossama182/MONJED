@@ -46,9 +46,17 @@ const TYPES = [
   },
 ];
 
+function toggleType(current, key) {
+  if (current.includes(key)) {
+    const next = current.filter((t) => t !== key);
+    return next.length ? next : current;
+  }
+  return [...current, key];
+}
+
 export default function ReportPage() {
   const { session } = useAuth();
-  const [type, setType] = useState("WATER RISING");
+  const [types, setTypes] = useState(["WATER RISING"]);
   const [location, setLocation] = useState(() => {
     if (!session) return "";
     const bits = [session.zone, session.country].filter(Boolean);
@@ -67,9 +75,10 @@ export default function ReportPage() {
     setSaved(null);
     setLoading(true);
 
+    const typeLabel = types.join(", ");
     const report_text = notes.trim()
-      ? `${type}. ${notes.trim()}`
-      : `${type} reported at this location.`;
+      ? `${typeLabel}. ${notes.trim()}`
+      : `${typeLabel} reported at this location.`;
 
     const zone_id = session?.zone_id || session?.countryCode || "KE";
 
@@ -84,7 +93,7 @@ export default function ReportPage() {
       setSaved(record);
       setNotes("");
       setLocation("");
-      setType("WATER RISING");
+      setTypes(["WATER RISING"]);
     } catch (err) {
       try {
         const analyzed = await analyzeCommunityReport({
@@ -107,7 +116,7 @@ export default function ReportPage() {
     }
   }
 
-const active = TYPES.find((t) => t.key === type);
+const activeTypes = TYPES.filter((t) => types.includes(t.key));
 
   return (
     <div className="mx-auto max-w-6xl px-5 sm:px-8 py-10 pb-16">
@@ -128,17 +137,17 @@ const active = TYPES.find((t) => t.key === type);
           <form className="mt-8 space-y-6" onSubmit={onSubmit}>
             <div>
               <p className="font-mono text-[10px] tracking-[0.14em] text-slate mb-3">
-                REPORT TYPE
+                REPORT TYPES · pick one or more
               </p>
               <div className="grid sm:grid-cols-2 gap-2">
                 {TYPES.map((t) => {
                   const Icon = t.icon;
-                  const on = type === t.key;
+                  const on = types.includes(t.key);
                   return (
                     <button
                       key={t.key}
                       type="button"
-                      onClick={() => setType(t.key)}
+                      onClick={() => setTypes((prev) => toggleType(prev, t.key))}
                       className={`flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition-colors ${
                         on
                           ? "border-amber/50 bg-amber/10"
@@ -264,17 +273,22 @@ const active = TYPES.find((t) => t.key === type);
         <aside className="space-y-5 lg:sticky lg:top-24">
           <div className="rounded-xl border border-line bg-panel/50 p-6">
             <p className="font-mono text-[10px] tracking-[0.14em] text-amber">
-              SELECTED TYPE
+              SELECTED {types.length > 1 ? "TYPES" : "TYPE"}
             </p>
-            <div className="mt-3 flex items-center gap-3">
-              {active && (
-                <active.icon size={22} className="text-amber" strokeWidth={1.75} />
-              )}
-              <h2 className="font-display text-xl font-bold">{type}</h2>
+            <div className="mt-3 space-y-3">
+              {activeTypes.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <div key={t.key} className="flex items-start gap-3">
+                    <Icon size={20} className="text-amber mt-0.5 shrink-0" strokeWidth={1.75} />
+                    <div>
+                      <h2 className="font-display text-lg font-bold">{t.key}</h2>
+                      <p className="mt-1 text-sm text-slate leading-relaxed">{t.hint}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <p className="mt-3 text-sm text-slate leading-relaxed">
-              {active?.hint}
-            </p>
             <div className="mt-5 pt-4 border-t border-line space-y-3 text-sm text-slate">
               <p className="inline-flex items-start gap-2">
                 <Shield size={15} className="text-teal mt-0.5 shrink-0" />

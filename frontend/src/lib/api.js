@@ -234,17 +234,20 @@ export function createAssistanceRequest(payload) {
   return post("/assistance/requests", payload);
 }
 
-export function listAssistanceRequests() {
-  return get("/assistance/requests/pending");
+export function listAssistanceRequests(params = {}) {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  const qs = q.toString();
+  return get(`/assistance/requests${qs ? `?${qs}` : ""}`);
 }
 
-/** Prefer volunteer inbox when id known; falls back to pending queue. */
+/** All help requests for the admin console. */
 export function listAllAssistanceForOps() {
-  return get("/assistance/requests/pending");
+  return listAssistanceRequests();
 }
 
 export function listPendingAssistance() {
-  return get("/assistance/requests/pending");
+  return listAssistanceRequests({ status: "pending" });
 }
 
 export function getAssistanceRequest(id) {

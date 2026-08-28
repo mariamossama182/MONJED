@@ -24,6 +24,9 @@ from app.services.assistance_store import (
     resolve_request,
 )
 
+# NOTE: Static paths like /requests/pending must be registered before
+# /requests/{request_id} or FastAPI will treat "pending" as an id.
+
 from app.services.volunteer_store import (
     add_volunteer,
     get_all_volunteers,
@@ -246,20 +249,36 @@ def create_request(
 
 
 # ============================================================
-# GET REQUEST
+# LIST ALL REQUESTS (ops)
 # ============================================================
 
 @router.get(
-    "/requests/{request_id}",
-    response_model=AssistanceRequestRecord,
+    "/requests",
+    response_model=list[AssistanceRequestRecord],
 )
-def read_request(
-    request_id: str,
-):
+def list_requests(
+    status: str | None = None,
+) -> list[AssistanceRequestRecord]:
+    """
+    Return assistance requests for the operations frontend.
 
-    return _get_request_or_404(
-        request_id
-    )
+    Optional filter:
+    - status=pending|assigned|in_progress|resolved
+    """
+
+    requests = get_all_requests()
+
+    if status is not None:
+
+        normalized = status.strip().lower()
+
+        requests = [
+            request
+            for request in requests
+            if request.status == normalized
+        ]
+
+    return requests
 
 
 
@@ -274,6 +293,24 @@ def read_request(
 def pending_requests():
 
     return get_pending_requests()
+
+
+
+# ============================================================
+# GET REQUEST
+# ============================================================
+
+@router.get(
+    "/requests/{request_id}",
+    response_model=AssistanceRequestRecord,
+)
+def read_request(
+    request_id: str,
+):
+
+    return _get_request_or_404(
+        request_id
+    )
 
 
 
