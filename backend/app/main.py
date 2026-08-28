@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -44,14 +45,21 @@ app = FastAPI(
 # ============================================================
 
 # Local frontend development origins.
-# Vite usually uses port 5173.
-# React/Next development may use port 3000.
-allowed_origins = [
+# Browsers treat localhost and 127.0.0.1 as different origins.
+_default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",
+    "http://127.0.0.1:5174",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+]
+
+_extra_origins = os.getenv("CORS_ORIGINS", "")
+allowed_origins = _default_origins + [
+    origin.strip()
+    for origin in _extra_origins.split(",")
+    if origin.strip()
 ]
 
 
