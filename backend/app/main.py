@@ -30,6 +30,11 @@ from app.routers import users
 
 from app.routers import auth
 
+from database.connection import (
+    DB_NAME,
+    MONGO_URI,
+)
+
 app = FastAPI(
     title="MONJED API",
     description=(
@@ -38,6 +43,11 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+
+@app.on_event("startup")
+def log_startup_config():
+    print(f"MONJED API using MongoDB: {MONGO_URI} / {DB_NAME}")
 
 
 # ============================================================
@@ -62,10 +72,14 @@ allowed_origins = _default_origins + [
     if origin.strip()
 ]
 
+# Allow any Render static site / web service (e.g. monjed-web.onrender.com).
+_render_origin_regex = r"https://.*\.onrender\.com"
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=_render_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
