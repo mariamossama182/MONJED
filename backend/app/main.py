@@ -72,14 +72,14 @@ allowed_origins = _default_origins + [
     if origin.strip()
 ]
 
-# Allow any Render static site / web service (e.g. monjed-web.onrender.com).
-_render_origin_regex = r"https://.*\.onrender\.com"
+# Allow deployed frontends on Render and Vercel.
+_deployed_origin_regex = r"https://(.*\.onrender\.com|.*\.vercel\.app)"
 
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=_render_origin_regex,
+    allow_origin_regex=_deployed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
